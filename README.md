@@ -10,9 +10,10 @@ are predicting what humanity will do, not optimising a spread curve.
 
 ## Run it
 
-It is a self-contained browser game — no build step, no dependencies. ES modules
-need to be served over HTTP (opening `index.html` from the filesystem will not
-work):
+No dependencies. Two ways:
+
+**From source** — the ES modules need to be served over HTTP, so opening
+`index.html` from the filesystem will not work:
 
 ```bash
 npm start          # python3 -m http.server 8080
@@ -20,6 +21,19 @@ npm start          # python3 -m http.server 8080
 ```
 
 Any static server works.
+
+**As a single file** — bundles everything into one HTML file you can open
+straight from disk, or email, or drop on any static host:
+
+```bash
+npm run build      # writes dist/backfire.html (~89KB)
+```
+
+`tools/build.js` concatenates the modules in dependency order and strips their
+`import`/`export` syntax, which works because no two modules declare the same
+name. It also writes `dist/embed.html`, the same page without the outer
+`<!doctype>`/`<head>`/`<body>` tags, for hosts that supply their own skeleton.
+`dist/` is generated and not committed — run the build to produce it.
 
 ## Tests
 
