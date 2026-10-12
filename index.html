@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Backfire</title>
+    <meta
+      name="description"
+      content="Backfire — a pandemic strategy prototype where humanity's response is the player's weapon."
+    />
+    <link rel="stylesheet" href="src/css/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <h1>BACKFIRE</h1>
+        <p>The cure isn’t the end. It’s the trap.</p>
+      </div>
+
+      <div class="clock">
+        <span class="clock-turn" id="clock-turn">Turn 1</span>
+        <span class="clock-day" id="clock-day">Day 0</span>
+      </div>
+
+      <div class="drift">
+        <span class="drift-value" id="drift-value">40</span>
+        <span class="drift-label">Drift <em id="drift-income">+7 / turn</em></span>
+      </div>
+
+      <div class="races">
+        <div class="race">
+          <div class="race-head">
+            <span>Collapse <abbr title="Reach 100 to win">▲</abbr></span>
+            <span id="collapse-value">0%</span>
+          </div>
+          <div class="bar"><i class="bar-fill bar-collapse" id="collapse-bar"></i></div>
+        </div>
+        <div class="race">
+          <div class="race-head">
+            <span>Cure <abbr title="Reaches 100 and you lose">▼</abbr></span>
+            <span id="cure-value">0%</span>
+          </div>
+          <div class="bar"><i class="bar-fill bar-cure" id="cure-bar"></i></div>
+          <p class="race-note" id="cure-forecast">Cure forecast: no data yet</p>
+        </div>
+      </div>
+
+      <button class="help-button" id="help-button" type="button" aria-haspopup="dialog">
+        Rules
+      </button>
+    </header>
+
+    <section class="meters" aria-label="Political variables">
+      <div class="meter" data-meter="cooperation">
+        <span class="meter-name">Cooperation</span>
+        <div class="bar bar-sm"><i class="bar-fill bar-coop" id="coop-bar"></i></div>
+        <span class="meter-value" id="coop-value">28</span>
+        <span class="meter-note" id="coop-note">loss at 80 for 6 turns</span>
+      </div>
+      <div class="meter" data-meter="tension">
+        <span class="meter-name">Tension</span>
+        <div class="bar bar-sm"><i class="bar-fill bar-tension" id="tension-bar"></i></div>
+        <span class="meter-value" id="tension-value">46</span>
+        <span class="meter-note">throttles the bloc border</span>
+      </div>
+      <div class="meter" data-meter="trust">
+        <span class="meter-name">Public trust</span>
+        <div class="bar bar-sm"><i class="bar-fill bar-trust" id="trust-bar"></i></div>
+        <span class="meter-value" id="trust-value">62</span>
+        <span class="meter-note">shapes event odds</span>
+      </div>
+      <div class="meter" data-meter="investigation">
+        <span class="meter-name">Investigation</span>
+        <div class="bar bar-sm"><i class="bar-fill bar-invest" id="invest-bar"></i></div>
+        <span class="meter-value" id="invest-value">0</span>
+        <span class="meter-note" id="invest-note">at 100 the blocs unite</span>
+      </div>
+      <div class="meter" data-meter="summit">
+        <span class="meter-name">Next summit</span>
+        <span class="meter-big" id="summit-value">5</span>
+        <span class="meter-note">turns away</span>
+      </div>
+    </section>
+
+    <main class="layout">
+      <section class="panel map-panel">
+        <div class="panel-head">
+          <h2>World map</h2>
+          <p id="map-status">Select a region to seed patient zero.</p>
+        </div>
+        <svg
+          id="map"
+          viewBox="0 0 100 92"
+          role="group"
+          aria-label="Twelve world regions"
+          preserveAspectRatio="xMidYMid meet"
+        ></svg>
+        <ul class="legend">
+          <li><span class="swatch bloc-red"></span> Red Bloc</li>
+          <li><span class="swatch bloc-blue"></span> Blue Bloc</li>
+          <li><span class="swatch bloc-neutral"></span> Neutral</li>
+          <li><span class="glyph">◌</span> clean</li>
+          <li><span class="glyph">◉</span> infected</li>
+          <li><span class="glyph">▣</span> contained</li>
+          <li><span class="glyph">✓</span> cleared</li>
+          <li><span class="glyph">≈</span> unverified data</li>
+        </ul>
+        <div class="region-detail" id="region-detail">
+          <p class="muted">Tap or hover a region for details.</p>
+        </div>
+      </section>
+
+      <section class="panel brief-panel">
+        <div class="panel-head">
+          <h2>Intelligence briefing</h2>
+        </div>
+        <div id="briefing"></div>
+      </section>
+
+      <section class="panel action-panel">
+        <div class="panel-head">
+          <h2>Operations</h2>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Operation tracks">
+          <button role="tab" class="tab is-active" data-track="spread" aria-selected="true">
+            Spread
+          </button>
+          <button role="tab" class="tab" data-track="traps" aria-selected="false">Traps</button>
+          <button role="tab" class="tab" data-track="influence" aria-selected="false">
+            Influence
+          </button>
+        </div>
+        <div id="actions" class="cards"></div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-head">
+          <h2>Turn report</h2>
+          <p id="log-note">Everything that changed, and why.</p>
+        </div>
+        <ol id="log" class="log"></ol>
+      </section>
+    </main>
+
+    <footer class="actionbar">
+      <button class="primary" id="end-turn" type="button">End turn</button>
+      <button class="ghost" id="restart" type="button">Restart</button>
+      <span class="seed">seed <code id="seed-value">—</code></span>
+    </footer>
+
+    <div class="overlay" id="end-screen" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="end-title">
+        <h2 id="end-title">Outcome</h2>
+        <p id="end-summary"></p>
+        <h3>How it turned</h3>
+        <ol id="end-timeline" class="timeline"></ol>
+        <div class="dialog-actions">
+          <button class="primary" id="end-restart" type="button">Play again</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay" id="help-screen" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+        <h2 id="help-title">How Backfire works</h2>
+        <p>
+          You are not trying to build the deadliest pathogen. You are betting on how humanity
+          reacts. Traps must be armed <strong>before</strong> their trigger exists — once treatment
+          or cure research crosses the line, it is too late to buy the trap that exploits it.
+        </p>
+        <h3>Each turn</h3>
+        <ol class="help-list">
+          <li>Read the briefing: region changes, bloc intentions, event odds, cure forecast.</li>
+          <li>Spend Drift on Spread, Traps or Influence — one pool, three competing tracks.</li>
+          <li>End the turn: spread, bloc decisions, an event, trap checks, cure progress.</li>
+          <li>Read the turn report to see what changed and why.</li>
+        </ol>
+        <h3>You win when</h3>
+        <p>Collapse reaches 100 — global infection with no countermeasure left standing.</p>
+        <h3>You lose if</h3>
+        <ul class="help-list">
+          <li>Cure progress reaches 100.</li>
+          <li>Cooperation stays at 80 or above for 6 turns.</li>
+          <li>The outbreak burns out entirely from over-lethality.</li>
+        </ul>
+        <h3>Things worth knowing</h3>
+        <ul class="help-list">
+          <li>Only two traps can be held at once, and holding one costs 10% transmission.</li>
+          <li>
+            Investigation at 100 means investigators rule the outbreak natural: blame evaporates,
+            cooperation jumps and the cure speeds up permanently. Bury evidence to slow it.
+          </li>
+          <li>
+            The Red Bloc conceals case numbers until its own outbreak passes 25%. That slows the
+            joint cure, but your map data for its regions is unverified (≈).
+          </li>
+          <li>Summits add cooperation unless you sabotage them beforehand.</li>
+          <li>The cure forecast is an estimate from the latest research rate, not a promise.</li>
+        </ul>
+        <div class="dialog-actions">
+          <button class="primary" id="help-close" type="button">Back to the game</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="src/js/main.js"></script>
+  </body>
+</html>
