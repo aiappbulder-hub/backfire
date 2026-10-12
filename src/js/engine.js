@@ -134,7 +134,7 @@ export function metrics(state) {
 }
 
 /** Research actually feeding the joint cure effort (concealed data is withheld). */
-function sharedResearch(state) {
+export function sharedResearch(state) {
   const { red, blue } = state.blocs;
   return blue.research + red.research * (red.concealing ? 0.4 : 1);
 }

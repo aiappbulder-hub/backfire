@@ -1,5 +1,5 @@
-// Static content: tuning constants, the 12-region world, actions, traps, events.
-// Everything here is data only — no game logic, no DOM.
+// Static content: tuning constants, the 12 world regions, actions, traps, events.
+// Data only — no game logic, no DOM. Map geometry lives in worldgeo.js.
 
 export const CONFIG = {
   daysPerTurn: 5,
@@ -37,170 +37,187 @@ export const CONFIG = {
   investigationResolved: 100,
 };
 
-// Bloc ids: 'red', 'blue', 'neutral'. Coordinates are 0..100 on an abstract map.
+// Two hostile blocs plus a contested middle. Population in millions.
 export const REGIONS = [
-  { id: 'cascade', name: 'Cascade Reach', bloc: 'blue', pop: 180, x: 11, y: 26, harsh: false },
-  { id: 'verge', name: 'Atlantic Verge', bloc: 'blue', pop: 210, x: 29, y: 21, harsh: false },
-  { id: 'meridian', name: 'Meridian Coast', bloc: 'blue', pop: 160, x: 16, y: 46, harsh: false },
-  { id: 'lowland', name: 'Lowland Union', bloc: 'blue', pop: 240, x: 43, y: 39, harsh: false },
-  { id: 'karelia', name: 'Karelia Shelf', bloc: 'red', pop: 150, x: 62, y: 17, harsh: true },
-  { id: 'volkov', name: 'Volkov Basin', bloc: 'red', pop: 230, x: 77, y: 29, harsh: false },
-  { id: 'sayan', name: 'Sayan Uplands', bloc: 'red', pop: 120, x: 67, y: 42, harsh: true },
-  { id: 'tiemen', name: 'Tiemen Corridor', bloc: 'red', pop: 300, x: 86, y: 49, harsh: false },
-  { id: 'sable', name: 'Sable Gulf', bloc: 'neutral', pop: 260, x: 51, y: 57, harsh: false },
-  { id: 'auric', name: 'Auric Plateau', bloc: 'neutral', pop: 190, x: 29, y: 67, harsh: true },
-  { id: 'tessellate', name: 'Tessellate Delta', bloc: 'neutral', pop: 310, x: 61, y: 75, harsh: false },
-  { id: 'harrow', name: 'Harrow Archipelago', bloc: 'neutral', pop: 90, x: 87, y: 71, harsh: false },
+  { id: 'northAmerica', name: 'North America', short: 'N. America', bloc: 'blue', pop: 500, harsh: false },
+  { id: 'westEurope', name: 'Western Europe', short: 'W. Europe', bloc: 'blue', pop: 420, harsh: false },
+  { id: 'oceania', name: 'Oceania', short: 'Oceania', bloc: 'blue', pop: 45, harsh: false },
+
+  { id: 'russia', name: 'Russia', short: 'Russia', bloc: 'red', pop: 150, harsh: true },
+  { id: 'centralAsia', name: 'Central Asia', short: 'C. Asia', bloc: 'red', pop: 85, harsh: true },
+  { id: 'eastAsia', name: 'East Asia', short: 'E. Asia', bloc: 'red', pop: 1650, harsh: false },
+
+  { id: 'eastEurope', name: 'Eastern Europe', short: 'E. Europe', bloc: 'neutral', pop: 290, harsh: false },
+  { id: 'middleEast', name: 'Middle East', short: 'Mid. East', bloc: 'neutral', pop: 290, harsh: false },
+  { id: 'southAsia', name: 'South Asia', short: 'S. Asia', bloc: 'neutral', pop: 2100, harsh: false },
+  { id: 'northAfrica', name: 'North Africa', short: 'N. Africa', bloc: 'neutral', pop: 280, harsh: true },
+  { id: 'southAfrica', name: 'Sub-Saharan Africa', short: 'Sub-Saharan', bloc: 'neutral', pop: 1100, harsh: false },
+  { id: 'southAmerica', name: 'South America', short: 'S. America', bloc: 'neutral', pop: 440, harsh: false },
 ];
 
-// Undirected edges. `cross` marks a bloc-to-bloc border: political tension
-// throttles it, which is how Influence spending reshapes the map.
+// Undirected routes. `cross` marks a direct bloc-to-bloc link: political
+// tension throttles it, which is how Influence spending reshapes the map.
 export const EDGES = [
-  { a: 'cascade', b: 'verge' },
-  { a: 'cascade', b: 'meridian' },
-  { a: 'verge', b: 'lowland' },
-  { a: 'meridian', b: 'lowland' },
-  { a: 'meridian', b: 'auric' },
-  { a: 'lowland', b: 'sable' },
-  { a: 'lowland', b: 'karelia', cross: true },
-  { a: 'karelia', b: 'volkov' },
-  { a: 'volkov', b: 'sayan' },
-  { a: 'volkov', b: 'tiemen' },
-  { a: 'sayan', b: 'tiemen' },
-  { a: 'sayan', b: 'sable', cross: true },
-  { a: 'tiemen', b: 'harrow' },
-  { a: 'sable', b: 'auric' },
-  { a: 'sable', b: 'tessellate' },
-  { a: 'tessellate', b: 'auric' },
-  { a: 'tessellate', b: 'harrow' },
+  { a: 'northAmerica', b: 'southAmerica' },
+  { a: 'northAmerica', b: 'westEurope' },
+  { a: 'northAmerica', b: 'eastAsia', cross: true },
+  { a: 'southAmerica', b: 'northAfrica' },
+  { a: 'westEurope', b: 'eastEurope' },
+  { a: 'westEurope', b: 'northAfrica' },
+  { a: 'westEurope', b: 'middleEast' },
+  { a: 'westEurope', b: 'russia', cross: true },
+  { a: 'eastEurope', b: 'russia' },
+  { a: 'eastEurope', b: 'middleEast' },
+  { a: 'russia', b: 'centralAsia' },
+  { a: 'russia', b: 'eastAsia' },
+  { a: 'centralAsia', b: 'eastAsia' },
+  { a: 'centralAsia', b: 'middleEast' },
+  { a: 'centralAsia', b: 'southAsia' },
+  { a: 'middleEast', b: 'northAfrica' },
+  { a: 'middleEast', b: 'southAsia' },
+  { a: 'northAfrica', b: 'southAfrica' },
+  { a: 'southAfrica', b: 'southAsia' },
+  { a: 'southAsia', b: 'eastAsia' },
+  { a: 'southAsia', b: 'oceania' },
+  { a: 'eastAsia', b: 'oceania' },
 ];
 
 export const TOTAL_POP = REGIONS.reduce((sum, r) => sum + r.pop, 0);
 
 /**
  * Purchasable actions. Cost escalates: base + step × (times already bought).
- * `track` is the UI tab; all three tracks draw from the same Drift pool.
+ * `preview` is the only prose on the card; `tip` is a hover tooltip.
  */
 export const ACTIONS = [
   {
     id: 'transmission',
     track: 'spread',
     name: 'Transmission',
+    icon: '↗',
     base: 18,
     step: 8,
     max: 6,
-    blurb: 'Raise the single transmission number driving growth and border flow.',
     preview: '+2 transmission · +4 investigation',
+    tip: 'Raises the single transmission number driving growth and border flow.',
   },
   {
     id: 'resilience',
     track: 'spread',
     name: 'Climate Resilience',
+    icon: '❄',
     base: 26,
     step: 12,
     max: 3,
-    blurb: 'Harsh regions (Karelia, Sayan, Auric) resist you until you adapt.',
     preview: '+18% growth in harsh regions',
+    tip: 'Russia, Central Asia and North Africa resist you until you adapt.',
   },
   {
     id: 'reach',
     track: 'spread',
     name: 'Vector Reach',
+    icon: '✈',
     base: 48,
     step: 0,
     max: 1,
-    blurb: 'Long-haul vectors: a chance each turn to seed a non-adjacent region.',
-    preview: 'unlocks long-range seeding · +6 investigation',
+    preview: 'long-range seeding · +6 investigation',
+    tip: 'Each turn, a chance to seed a region bordering nothing you hold.',
   },
   {
     id: 'seed',
     track: 'spread',
     name: 'Seed Region',
+    icon: '✸',
     base: 14,
     step: 6,
     max: 99,
     needsRegion: true,
-    blurb: 'Place a new outbreak by hand in a selected clean region next to an infected one.',
     preview: 'selected region → 2% infected',
+    tip: 'Place an outbreak by hand in a clean region bordering an infected one.',
   },
   {
     id: 'disinfo',
     track: 'influence',
-    name: 'Disinformation Push',
+    name: 'Disinformation',
+    icon: '◈',
     base: 20,
     step: 6,
     max: 99,
-    blurb: 'Cheap, repeatable noise. Keeps the blocs talking past each other.',
-    preview: '−6 cooperation · +4 tension · −5 public trust',
+    preview: '−6 cooperation · +4 tension · −5 trust',
+    tip: 'Cheap, repeatable noise. Keeps the blocs talking past each other.',
   },
   {
     id: 'leak',
     track: 'influence',
     name: 'Leak a Dossier',
+    icon: '⚑',
     base: 34,
     step: 10,
     max: 99,
-    blurb: 'Blame the rival bloc. Powerful, but investigators notice forged paper.',
     preview: '−10 cooperation · +10 tension · +8 investigation',
+    tip: 'Blame the rival bloc. Powerful, but investigators notice forged paper.',
   },
   {
     id: 'bury',
     track: 'influence',
     name: 'Bury Evidence',
+    icon: '⊘',
     base: 24,
     step: 8,
     max: 99,
-    blurb: 'Slow the attribution enquiry. If it concludes "natural", the blocs unite.',
     preview: '−15 investigation',
+    tip: 'Slow the enquiry. If it rules the outbreak natural, the blocs unite.',
   },
   {
     id: 'sabotage',
     track: 'influence',
     name: 'Sabotage Summit',
+    icon: '✕',
     base: 45,
     step: 0,
     max: 99,
-    blurb: 'Neutralise the next scheduled summit. Must be bought before it convenes.',
     preview: 'next summit adds no cooperation',
+    tip: 'Must be bought before the summit convenes.',
   },
 ];
 
 /**
- * Traps. A trap may only be armed while `trigger(state)` is false — no
- * retroactive arming. If the trigger fires while unarmed, the trap is missed.
+ * Traps. A trap may only be armed while its trigger is false — no retroactive
+ * arming. If the trigger fires while unarmed, the trap is missed.
  */
 export const TRAPS = [
   {
     id: 'backfire',
     name: 'Backfire Response',
+    icon: '☣',
+    kind: 'Biological',
     cost: 70,
-    triggerText: 'Either bloc’s treatment programme reaches 40',
-    effectText:
-      'For 3 turns: treatment accelerates the outbreak instead of slowing it (×2 transmission pressure, +60% collapse).',
-    tellText: 'Autopsy data exposes it later: +12 investigation when it fires.',
+    triggerText: 'Either bloc’s treatment reaches 40',
+    effectText: 'Treatment accelerates the outbreak for 3 turns (+60% collapse).',
+    tellText: 'Autopsies expose it: +12 investigation when it fires.',
   },
   {
     id: 'cascade',
     name: 'Cure Cascade',
+    icon: '⚗',
+    kind: 'Research',
     cost: 90,
-    triggerText: 'Global cure research passes 50%',
-    effectText:
-      'Every further 10% of cure progress adds +3 collapse per turn and +1 lethality.',
-    tellText: 'Raises cure speed by 15% — a high-risk endgame bet.',
+    triggerText: 'Cure research passes 50%',
+    effectText: 'Every further 10% of cure adds +3 collapse and +1 lethality.',
+    tellText: 'Also speeds the cure by 15% — a high-risk endgame bet.',
   },
 ];
 
 /**
- * Six events. `weight(state)` returns a relative draw weight so that the
- * world the player has made determines which cards come up. `why` explains
- * the weighting to the player, so odds are legible rather than mysterious.
+ * Six events. `weight(state)` returns a relative draw weight so the world the
+ * player has made determines which cards come up. `why` explains the weighting,
+ * so the odds are legible rather than mysterious.
  */
 export const EVENTS = [
   {
     id: 'festival',
     name: 'Festival Superspreader',
     text: 'A stadium season goes ahead in a region already carrying cases.',
-    why: 'Likelier while infection is established but containment is still loose.',
+    why: 'Likelier while infection is established but containment is loose.',
     weight: (s) => 6 + 26 * s.globalInfection * (1 - s.containmentShare),
   },
   {
@@ -213,7 +230,7 @@ export const EVENTS = [
   {
     id: 'strike',
     name: 'Port Strike',
-    text: 'Shipping strands; one border route closes for three turns.',
+    text: 'Shipping strands; one route closes for three turns.',
     why: 'Likelier as military tension rises.',
     weight: (s) => 3 + s.tension * 0.3,
   },
@@ -235,7 +252,7 @@ export const EVENTS = [
     id: 'containment',
     name: 'Lab Containment Failure',
     text: 'A second seed point escapes a high-security facility.',
-    why: 'Likelier the harder the blocs are working on treatment and research.',
+    why: 'Likelier the harder the blocs work on treatment and research.',
     weight: (s) => 2 + s.maxTreatment * 0.14 + s.researchTotal * 0.5,
   },
 ];

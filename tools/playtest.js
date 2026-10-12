@@ -16,7 +16,7 @@ import {
 } from '../src/js/engine.js';
 
 const RUNS = Number(process.argv[2] || 40);
-const START = 'tessellate'; // a big neutral hub — a fair opening for every strategy
+const START = 'southAsia'; // the most populous region — a fair opening for every strategy
 
 const buy = (state, id, region = null) => {
   if (canPurchase(state, id, region).ok) return purchase(state, id, region).ok;

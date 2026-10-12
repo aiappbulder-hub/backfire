@@ -89,8 +89,9 @@ treatment reaches 40.
 
 ## Systems implemented
 
-- 12 abstract regions on a connected-node map, with bloc membership, population,
-  harsh-climate modifiers, connectivity, containment and clearance.
+- A real world map: 12 named regions (North America through Oceania) drawn from
+  lon/lat coastlines and projected at render time, with bloc membership,
+  population, harsh-climate modifiers, connectivity, containment and clearance.
 - A single transmission number driving both internal growth and border flow.
 - Two blocs that react to detected infection: treatment, research, containment,
   clearance. The Red Bloc conceals case counts until its own outbreak passes 25%
@@ -110,6 +111,7 @@ treatment reaches 40.
 index.html           markup and the static UI shell
 src/css/styles.css   dark strategy-console styling, responsive to 390px
 src/js/data.js       tuning constants, regions, edges, actions, traps, events
+src/js/worldgeo.js   coastlines as lon/lat rings, plus the map projection
 src/js/rng.js        seedable RNG (mulberry32) — runs are reproducible
 src/js/engine.js     all game rules; no DOM access
 src/js/ui.js         all rendering; no game rules
@@ -125,6 +127,8 @@ with no browser, which is what makes the tests and the balance harness possible.
 
 - Only two of the four designed traps are implemented (Decoy Coat and Sleeper
   Reservoir are not). Prototype scope, per the brief.
+- The coastlines are simplified by hand. Europe is the roughest of them, and
+  the Atlantic islands are approximations rather than real geography.
 - Tension is read by events and the cross-bloc border, but the player has no
   direct lever on military movement or refugee corridors.
 - The distrust loop is a single Investigation meter rather than five stages.

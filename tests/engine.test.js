@@ -17,6 +17,7 @@ import {
   purchase,
   seedPatientZero,
   seedableRegions,
+  sharedResearch,
   transmission,
   trapTriggered,
 } from '../src/js/engine.js';
@@ -24,7 +25,7 @@ import {
 /** A game seeded and ready for the planning phase. */
 function startedGame(seed = 'test-seed') {
   const state = createGame(seed);
-  seedPatientZero(state, 'tessellate');
+  seedPatientZero(state, 'southAsia');
   return state;
 }
 
@@ -43,17 +44,17 @@ test('setup requires patient zero before the planning phase begins', () => {
   assert.equal(canPurchase(state, 'transmission').ok, false);
   assert.equal(endTurn(state).ok, false);
 
-  const result = seedPatientZero(state, 'sable');
+  const result = seedPatientZero(state, 'middleEast');
   assert.equal(result.ok, true);
   assert.equal(state.phase, 'planning');
-  assert.ok(state.regions.sable.inf > 0);
+  assert.ok(state.regions.middleEast.inf > 0);
   assert.ok(state.briefing, 'a briefing is available once play starts');
 });
 
 test('patient zero can only be placed once', () => {
   const state = startedGame();
-  assert.equal(seedPatientZero(state, 'cascade').ok, false);
-  assert.equal(state.regions.cascade.inf, 0);
+  assert.equal(seedPatientZero(state, 'northAmerica').ok, false);
+  assert.equal(state.regions.northAmerica.inf, 0);
 });
 
 test('Drift is spent, never goes negative, and unaffordable actions are blocked', () => {
@@ -101,10 +102,10 @@ test('seeding requires a clean region bordering an infected one', () => {
   state.drift = 10000;
   const seedable = seedableRegions(state);
   assert.ok(seedable.length > 0);
-  assert.ok(!seedable.includes('tessellate'), 'already infected');
-  assert.ok(!seedable.includes('cascade'), 'not adjacent to the outbreak');
+  assert.ok(!seedable.includes('southAsia'), 'already infected');
+  assert.ok(!seedable.includes('northAmerica'), 'not adjacent to the outbreak');
 
-  assert.equal(canPurchase(state, 'seed', 'cascade').ok, false);
+  assert.equal(canPurchase(state, 'seed', 'northAmerica').ok, false);
   assert.equal(canPurchase(state, 'seed', null).ok, false);
 
   const target = seedable[0];
@@ -258,20 +259,33 @@ test('the cure forecast responds to cooperation rather than being cosmetic', () 
 });
 
 test('a concealing bloc withholds research from the joint cure effort', () => {
+  // Isolate the mechanism: identical research, only the concealment flag differs.
   const open = startedGame('open');
   const hidden = startedGame('hidden');
   for (const s of [open, hidden]) {
     s.blocs.blue.research = 5;
     s.blocs.red.research = 5;
-    s.cooperation = 50;
   }
   open.blocs.red.concealing = false;
   hidden.blocs.red.concealing = true;
-  // Freeze the AI's own concealment decision so only the flag differs.
-  for (const s of [open, hidden]) s.regions.tessellate.inf = 0.2;
-  endTurn(open);
-  endTurn(hidden);
-  assert.ok(open.cure > hidden.cure, 'shared data produces a faster cure');
+  assert.ok(
+    sharedResearch(open) > sharedResearch(hidden),
+    'withheld data counts for less toward the cure',
+  );
+});
+
+test('the Red Bloc stops concealing once its own outbreak passes 25%', () => {
+  const quiet = startedGame('quiet');
+  const loud = startedGame('loud');
+  for (const r of ['russia', 'centralAsia', 'eastAsia']) {
+    quiet.regions[r].inf = 0.1;
+    loud.regions[r].inf = 0.45;
+  }
+  endTurn(quiet);
+  endTurn(loud);
+  assert.equal(quiet.blocs.red.concealing, true, 'a small outbreak stays hidden');
+  assert.equal(loud.blocs.red.concealing, false, 'a large one cannot be hidden');
+  assert.ok(loud.log.some((e) => /no longer hide/.test(e.text)));
 });
 
 test('attribution resolving unites the blocs and permanently speeds the cure', () => {
@@ -308,13 +322,13 @@ test('infection spreads along connectivity, not into unconnected regions', () =>
   for (let i = 0; i < 4; i++) purchase(state, 'transmission');
   playTurns(state, 6);
   assert.ok(metrics(state).infectedRegions > 1, 'the outbreak reaches neighbours');
-  assert.ok(state.regions.tessellate.inf > 0.02, 'the seed region grows');
+  assert.ok(state.regions.southAsia.inf > 0.02, 'the seed region grows');
 });
 
 test('the same seed and inputs reproduce the same run', () => {
   const run = (seed) => {
     const state = createGame(seed);
-    seedPatientZero(state, 'sable');
+    seedPatientZero(state, 'middleEast');
     playTurns(state, 15, (s) => {
       if (canPurchase(s, 'transmission').ok) purchase(s, 'transmission');
       if (canArmTrap(s, 'backfire').ok) armTrap(s, 'backfire');

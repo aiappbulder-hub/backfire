@@ -21,12 +21,16 @@ import {
   turnsUntilSummit,
   visibleInfection,
 } from './engine.js';
+import { LANDMASSES, VIEWBOX, project, ringToPath } from './worldgeo.js';
 
 const $ = (id) => document.getElementById(id);
 const pct = (v) => `${Math.round(v * 100)}%`;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const BLOC_LABEL = { red: 'Red Bloc', blue: 'Blue Bloc', neutral: 'Neutral' };
+// Base landmass colours, before infection is painted over them.
+const BLOC_FILL = { red: '#3a2026', blue: '#1b2a3f', neutral: '#242a33' };
+const BLOC_EDGE = { red: '#e0453c', blue: '#3d8ae0', neutral: '#6d7988' };
 
 function el(tag, attrs = {}, text = null) {
   const node = document.createElementNS(SVG_NS, tag);
@@ -35,25 +39,14 @@ function el(tag, attrs = {}, text = null) {
   return node;
 }
 
-function hexPoints(cx, cy, r) {
-  const pts = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 180) * (60 * i - 30);
-    pts.push(`${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`);
-  }
-  return pts.join(' ');
-}
-
-const radiusOf = (region) => 3.5 + region.pop / 95;
-
-/** Status word + glyph for a region, so status never depends on colour alone. */
+/** Status word + glyph, so state never depends on colour alone. */
 function regionStatus(state, regionId) {
   const rs = state.regions[regionId];
   const seen = visibleInfection(state, regionId);
   if (rs.cleared) return { glyph: '✓', word: 'cleared' };
   if (rs.contained) return { glyph: '▣', word: 'contained' };
   if (seen.value > 0.001) return { glyph: seen.unverified ? '≈' : '◉', word: 'infected' };
-  return { glyph: '◌', word: 'clean' };
+  return { glyph: '', word: 'clean' };
 }
 
 // ---------------------------------------------------------------------------
@@ -62,44 +55,50 @@ function regionStatus(state, regionId) {
 
 export function renderMap(state, view, handlers) {
   const svg = $('map');
+  svg.setAttribute('viewBox', VIEWBOX);
   svg.textContent = '';
-  const seedable = state.phase === 'setup' ? REGIONS.map((r) => r.id) : seedableRegions(state);
-  // Highlight placeable regions while the player is actually able to seed one.
+
   const canSeedNow =
     state.phase === 'setup' ||
-    (state.phase === 'planning' &&
-      view.track === 'spread' &&
-      state.drift >= actionCost(state, 'seed'));
+    (state.phase === 'planning' && view.track === 'spread' && state.drift >= actionCost(state, 'seed'));
+  const seedable = state.phase === 'setup' ? REGIONS.map((r) => r.id) : seedableRegions(state);
 
-  const edgeLayer = el('g', { class: 'edges' });
+  // Ocean and graticule.
+  svg.appendChild(el('rect', { x: 0, y: 0, width: 1000, height: 500, fill: '#0b1119' }));
+  const grid = el('g', { class: 'graticule' });
+  for (let lon = -150; lon <= 150; lon += 30) {
+    const [x] = project([lon, 0]);
+    grid.appendChild(el('line', { x1: x, y1: 30, x2: x, y2: 410 }));
+  }
+  for (let lat = -30; lat <= 60; lat += 30) {
+    const [, y] = project([0, lat]);
+    grid.appendChild(el('line', { x1: 0, y1: y, x2: 1000, y2: y }));
+  }
+  svg.appendChild(grid);
+
+  // Routes, drawn under the labels so the map stays readable.
+  const routes = el('g', { class: 'routes' });
   for (const e of EDGES) {
-    const a = REGION_BY_ID[e.a];
-    const b = REGION_BY_ID[e.b];
+    const [x1, y1] = project(LANDMASSES[e.a].label);
+    const [x2, y2] = project(LANDMASSES[e.b].label);
     const closed = (state.closedEdges[`${e.a}|${e.b}`] || 0) > 0;
     const hot = state.regions[e.a].inf > 0.05 && state.regions[e.b].inf > 0.05;
-    const classes = ['edge'];
+    const classes = ['route'];
     if (e.cross) classes.push('is-cross');
     if (closed) classes.push('is-closed');
     else if (hot) classes.push('is-hot');
-    const line = el('line', {
-      x1: a.x,
-      y1: a.y,
-      x2: b.x,
-      y2: b.y,
-      class: classes.join(' '),
-    });
-    if (closed) line.appendChild(el('title', {}, `${a.name} ↔ ${b.name}: route closed`));
-    edgeLayer.appendChild(line);
+    routes.appendChild(el('line', { x1, y1, x2, y2, class: classes.join(' ') }));
   }
-  svg.appendChild(edgeLayer);
+  svg.appendChild(routes);
 
+  // Landmasses.
   for (const region of REGIONS) {
     const rs = state.regions[region.id];
     const seen = visibleInfection(state, region.id);
     const status = regionStatus(state, region.id);
-    const r = radiusOf(region);
+    const geo = LANDMASSES[region.id];
 
-    const classes = [`region`, `bloc-${region.bloc}`];
+    const classes = ['region'];
     if (rs.contained) classes.push('is-contained');
     if (rs.cleared) classes.push('is-cleared');
     if (view.selectedRegion === region.id) classes.push('is-selected');
@@ -112,37 +111,50 @@ export function renderMap(state, view, handlers) {
       'aria-label': `${region.name}, ${BLOC_LABEL[region.bloc]}, ${status.word}, ${pct(seen.value)} infected`,
     });
 
+    for (const ring of geo.shapes) {
+      const d = ringToPath(ring);
+      group.appendChild(
+        el('path', { d, class: 'land', fill: BLOC_FILL[region.bloc], stroke: BLOC_EDGE[region.bloc] }),
+      );
+      if (seen.value > 0.001) {
+        group.appendChild(
+          el('path', {
+            d,
+            class: 'infection',
+            fill: rs.contained ? '#c8821f' : '#d8352b',
+            'fill-opacity': (0.2 + 0.8 * Math.min(1, seen.value)).toFixed(2),
+            stroke: 'none',
+          }),
+        );
+      }
+    }
+
+    const [lx, ly] = project(geo.label);
+    const label = el('text', { x: lx, y: ly, class: 'region-label' }, region.short);
+    group.appendChild(label);
+    if (seen.value > 0.001 || rs.cleared) {
+      group.appendChild(
+        el(
+          'text',
+          { x: lx, y: ly + 15, class: 'region-figure' },
+          rs.cleared ? '✓ cleared' : `${status.glyph} ${pct(seen.value)}`,
+        ),
+      );
+    }
+    // A generous invisible target over the label, so tapping a region's name
+    // selects it — thin coastlines are awkward to hit, especially on a phone.
     group.appendChild(
-      el('polygon', {
-        points: hexPoints(region.x, region.y, r),
-        class: 'region-body',
-        fill: region.bloc === 'red' ? '#2a1a1d' : region.bloc === 'blue' ? '#16202e' : '#1d232c',
+      el('circle', {
+        cx: lx,
+        cy: ly - 4,
+        r: 30,
+        class: 'hit',
+        fill: '#000',
+        'fill-opacity': '0',
+        'pointer-events': 'all',
       }),
     );
 
-    if (seen.value > 0.001) {
-      group.appendChild(
-        el('polygon', {
-          points: hexPoints(region.x, region.y, r * Math.sqrt(Math.min(1, seen.value))),
-          fill: rs.contained ? '#b06a28' : '#c23a32',
-          'fill-opacity': '0.85',
-          stroke: 'none',
-          'pointer-events': 'none',
-        }),
-      );
-    }
-
-    group.appendChild(el('text', { x: region.x, y: region.y + 0.9, class: 'region-glyph' }, status.glyph));
-    group.appendChild(
-      el('text', { x: region.x, y: region.y + r + 2.6, class: 'region-label' }, region.name),
-    );
-    group.appendChild(
-      el(
-        'text',
-        { x: region.x, y: region.y + r + 4.9, class: 'region-figure' },
-        seen.value > 0.001 ? `${seen.unverified ? '≈' : ''}${pct(seen.value)}` : status.word,
-      ),
-    );
     group.appendChild(
       el('title', {}, `${region.name} — ${BLOC_LABEL[region.bloc]} — ${status.word} — ${pct(seen.value)}`),
     );
@@ -160,56 +172,44 @@ export function renderMap(state, view, handlers) {
     svg.appendChild(group);
   }
 
+  const m = metrics(state);
   $('map-status').textContent =
     state.phase === 'setup'
-      ? 'Select a region to seed patient zero.'
-      : `${metrics(state).infectedRegions}/12 regions carrying cases · global infection ${pct(
-          metrics(state).globalInfection,
-        )}`;
+      ? 'Choose where it starts.'
+      : `${m.infectedRegions}/12 regions · ${pct(m.globalInfection)} infected`;
 }
 
 export function renderRegionDetail(state, regionId) {
   const box = $('region-detail');
   if (!regionId) {
-    box.innerHTML = '<p class="muted">Tap or hover a region for details.</p>';
+    box.innerHTML = '<p class="muted">Hover or tap a region.</p>';
     return;
   }
   const region = REGION_BY_ID[regionId];
-  const rs = state.regions[regionId];
   const seen = visibleInfection(state, regionId);
   const status = regionStatus(state, regionId);
-  const neighbours = EDGES.filter((e) => e.a === regionId || e.b === regionId).map((e) => {
-    const other = e.a === regionId ? e.b : e.a;
-    const closed = (state.closedEdges[`${e.a}|${e.b}`] || 0) > 0;
-    return `${REGION_BY_ID[other].name}${closed ? ' (closed)' : ''}${e.cross ? ' ⚔' : ''}`;
-  });
 
   box.innerHTML = '';
   const h = document.createElement('h3');
   h.textContent = region.name;
   const sub = document.createElement('p');
-  sub.className = 'muted';
-  sub.style.margin = '0';
-  sub.style.fontSize = '12px';
-  sub.textContent = `${BLOC_LABEL[region.bloc]} · ${region.pop}M${region.harsh ? ' · harsh climate' : ''}`;
+  sub.className = 'detail-sub';
+  const bits = [BLOC_LABEL[region.bloc], `${region.pop}M`, `${status.glyph} ${status.word}`.trim()];
+  if (seen.unverified) bits.push('unverified');
+  if (region.harsh) bits.push('harsh climate');
+  sub.textContent = bits.join(' · ');
 
-  const dl = document.createElement('dl');
-  const rows = [
-    ['Status', `${status.glyph} ${status.word}${seen.unverified ? ' (unverified)' : ''}`],
-    ['Infected', pct(seen.value)],
-    ['Routes', neighbours.join(', ')],
-  ];
+  const figure = document.createElement('p');
+  figure.className = 'detail-figure';
+  figure.textContent = pct(seen.value);
+
+  box.append(h, sub, figure);
   if (region.bloc !== 'neutral') {
-    rows.push(['Treatment', String(Math.round(state.blocs[region.bloc].treatment))]);
+    const treat = document.createElement('p');
+    treat.className = 'detail-sub';
+    treat.textContent = `Treatment ${Math.round(state.blocs[region.bloc].treatment)}`;
+    box.appendChild(treat);
   }
-  for (const [k, v] of rows) {
-    const dt = document.createElement('dt');
-    dt.textContent = k;
-    const dd = document.createElement('dd');
-    dd.textContent = v;
-    dl.append(dt, dd);
-  }
-  box.append(h, sub, dl);
 }
 
 // ---------------------------------------------------------------------------
@@ -217,11 +217,10 @@ export function renderRegionDetail(state, regionId) {
 // ---------------------------------------------------------------------------
 
 export function renderStatus(state) {
-  const m = metrics(state);
   $('clock-turn').textContent = `Turn ${state.turn}`;
   $('clock-day').textContent = `Day ${state.day}`;
   $('drift-value').textContent = Math.floor(state.drift);
-  $('drift-income').textContent = `+${driftIncome(state)} / turn`;
+  $('drift-income').textContent = `+${driftIncome(state)}`;
   $('seed-value').textContent = state.seed;
 
   $('collapse-value').textContent = `${Math.round(state.collapse)}%`;
@@ -231,8 +230,8 @@ export function renderStatus(state) {
 
   const forecast = cureForecast(state);
   $('cure-forecast').textContent = forecast.known
-    ? `est. ${forecast.turns} turns to cure (rate ${state.cureRateLast}/turn)`
-    : 'Cure forecast: research has not started';
+    ? `~${forecast.turns} turns left`
+    : 'not started';
 
   const meters = [
     ['coop', state.cooperation, state.cooperation >= CONFIG.cooperationLossThreshold],
@@ -248,14 +247,12 @@ export function renderStatus(state) {
 
   $('coop-note').textContent =
     state.cooperationStreak > 0
-      ? `united ${state.cooperationStreak}/${CONFIG.cooperationLossTurns} turns — you lose at ${CONFIG.cooperationLossTurns}`
-      : `loss at ${CONFIG.cooperationLossThreshold} for ${CONFIG.cooperationLossTurns} turns`;
-  $('invest-note').textContent = state.investigationResolved
-    ? 'resolved: ruled natural, cure accelerated'
-    : 'at 100 the blocs unite';
+      ? `united ${state.cooperationStreak}/${CONFIG.cooperationLossTurns}`
+      : `lose at ${CONFIG.cooperationLossThreshold}`;
+  $('invest-note').textContent = state.investigationResolved ? 'ruled natural' : 'blocs unite at 100';
   $('summit-value').textContent = turnsUntilSummit(state);
   document.querySelector('[data-meter="summit"] .meter-note').textContent = state.sabotageArmed
-    ? 'sabotage ready'
+    ? 'sabotaged'
     : 'turns away';
 }
 
@@ -268,69 +265,61 @@ export function renderBriefing(state) {
   host.innerHTML = '';
   const brief = state.briefing;
   if (!brief) {
-    host.innerHTML = '<p class="muted">Seed patient zero to receive the first briefing.</p>';
+    host.innerHTML = '<p class="muted">Choose a starting region.</p>';
     return;
   }
 
-  const block = (title) => {
-    const b = document.createElement('div');
-    b.className = 'brief-block';
-    const h = document.createElement('h3');
-    h.textContent = title;
-    b.appendChild(h);
-    return b;
-  };
-  const line = (left, right) => {
-    const l = document.createElement('div');
-    l.className = 'brief-line';
-    const a = document.createElement('span');
-    a.textContent = left;
-    const c = document.createElement('span');
-    c.textContent = right;
-    l.append(a, c);
-    return l;
-  };
+  // Compact stat tiles instead of a wall of label/value rows.
+  const stats = document.createElement('div');
+  stats.className = 'stat-grid';
+  const tiles = [
+    ['Infected', pct(brief.globalInfection)],
+    ['Regions', `${brief.infectedRegions}/12`],
+    ['Transmission', String(Math.round(transmission(state) * 10) / 10)],
+    ['Summit in', `${brief.summitIn}`],
+  ];
+  for (const [k, v] of tiles) {
+    const tile = document.createElement('div');
+    tile.className = 'stat';
+    const value = document.createElement('span');
+    value.className = 'stat-value';
+    value.textContent = v;
+    const name = document.createElement('span');
+    name.className = 'stat-name';
+    name.textContent = k;
+    tile.append(value, name);
+    stats.appendChild(tile);
+  }
+  host.appendChild(stats);
 
-  const world = block('World');
-  world.appendChild(line('Global infection', pct(brief.globalInfection)));
-  world.appendChild(line('Regions with cases', `${brief.infectedRegions}/12`));
-  world.appendChild(line('Regions declared cleared', String(brief.clearedRegions)));
-  world.appendChild(line('Transmission', String(Math.round(transmission(state) * 10) / 10)));
-  world.appendChild(
-    line('Cure forecast', brief.forecast.known ? `~${brief.forecast.turns} turns (est.)` : 'unknown'),
-  );
-  world.appendChild(
-    line('Next summit', `${brief.summitIn} turn${brief.summitIn === 1 ? '' : 's'}${state.sabotageArmed ? ' · sabotaged' : ''}`),
-  );
-  host.appendChild(world);
-
-  const blocs = block('Bloc intentions');
   for (const intent of brief.intentions) {
     const div = document.createElement('div');
     div.className = `intent bloc-${intent.id}`;
     const strong = document.createElement('strong');
-    strong.textContent = `${intent.name}: ${intent.intent}`;
+    strong.textContent = intent.name;
     const p = document.createElement('p');
-    const bits = [`detected ${pct(intent.detected)}`, `treatment ${intent.treatment}`, ...intent.extras];
+    const bits = [intent.intent, `seen ${pct(intent.detected)}`, `treat ${intent.treatment}`];
+    if (intent.extras.length) bits.push(...intent.extras);
     p.textContent = bits.join(' · ');
     div.append(strong, p);
-    blocs.appendChild(div);
+    host.appendChild(div);
   }
-  host.appendChild(blocs);
 
-  const risks = block('Likeliest developments');
+  const risks = document.createElement('div');
+  risks.className = 'risk-list';
+  const rh = document.createElement('h3');
+  rh.textContent = 'Likely next';
+  risks.appendChild(rh);
   for (const risk of brief.risks) {
     const div = document.createElement('div');
     div.className = 'risk';
+    div.title = risk.why; // the reasoning is a tooltip, not another paragraph
     const name = document.createElement('span');
     name.textContent = risk.name;
     const chance = document.createElement('span');
     chance.className = 'risk-chance';
     chance.textContent = `${risk.chance}%`;
-    const why = document.createElement('span');
-    why.className = 'risk-why';
-    why.textContent = risk.why;
-    div.append(name, chance, why);
+    div.append(name, chance);
     risks.appendChild(div);
   }
   host.appendChild(risks);
@@ -349,134 +338,109 @@ export function renderActions(state, view, handlers) {
     return;
   }
 
-  const actions = ACTIONS.filter((a) => a.track === view.track);
-  for (const action of actions) {
+  for (const action of ACTIONS.filter((a) => a.track === view.track)) {
     const bought = state.purchases[action.id] || 0;
     const cost = actionCost(state, action.id);
     const check = canPurchase(state, action.id, view.selectedRegion);
 
-    const card = document.createElement('div');
-    card.className = 'card';
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'card action-card';
+    card.disabled = !check.ok;
+    card.title = action.tip;
+    card.addEventListener('click', () => handlers.onPurchase(action.id));
 
-    const head = document.createElement('div');
-    head.className = 'card-head';
-    const h = document.createElement('h3');
-    h.textContent = action.name;
+    const icon = document.createElement('span');
+    icon.className = 'card-icon';
+    icon.textContent = action.icon;
+
+    const main = document.createElement('span');
+    main.className = 'card-main';
+    const name = document.createElement('span');
+    name.className = 'card-name';
+    name.textContent = action.name;
+    const preview = document.createElement('span');
+    preview.className = 'card-preview';
+    preview.textContent = check.ok || !check.reason ? action.preview : check.reason;
+    main.append(name, preview);
+
+    const right = document.createElement('span');
+    right.className = 'card-right';
     const price = document.createElement('span');
     price.className = 'card-cost';
-    price.textContent = `${cost} Drift`;
-    head.append(h, price);
-
-    const blurb = document.createElement('p');
-    blurb.className = 'card-blurb';
-    blurb.textContent = action.blurb;
-
-    const preview = document.createElement('p');
-    preview.className = 'card-preview';
-    preview.textContent = `→ ${action.preview}`;
-
-    const foot = document.createElement('div');
-    foot.className = 'card-foot';
-    const level = document.createElement('span');
-    level.className = 'card-level';
-    level.textContent =
-      action.max < 90 ? `level ${bought}/${action.max}` : bought ? `bought ×${bought}` : '';
-    const right = document.createElement('div');
-    right.style.display = 'flex';
-    right.style.alignItems = 'center';
-    right.style.gap = '8px';
-    if (!check.ok) {
-      const reason = document.createElement('span');
-      reason.className = 'card-reason';
-      reason.textContent = check.reason;
-      right.appendChild(reason);
+    price.textContent = cost;
+    right.appendChild(price);
+    if (action.max < 90) {
+      const level = document.createElement('span');
+      level.className = 'card-level';
+      level.textContent = `${bought}/${action.max}`;
+      right.appendChild(level);
     }
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = action.id === 'seed' ? 'Seed' : 'Buy';
-    button.disabled = !check.ok;
-    button.addEventListener('click', () => handlers.onPurchase(action.id));
-    right.appendChild(button);
-    foot.append(level, right);
 
-    card.append(head, blurb, preview, foot);
+    card.append(icon, main, right);
     host.appendChild(card);
   }
 }
 
 function renderTrapCards(state, host, handlers) {
   const note = document.createElement('p');
-  note.className = 'card-preview';
-  note.style.margin = '0 0 4px';
-  note.textContent = `Held ${armedTrapCount(state)}/${CONFIG.maxArmedTraps} · holding a trap costs ${Math.round(
-    CONFIG.armedTransmissionPenalty * 100,
-  )}% transmission · a trap can never be armed after its trigger exists`;
+  note.className = 'track-note';
+  note.textContent = `${armedTrapCount(state)}/${CONFIG.maxArmedTraps} held · never armable after its trigger`;
   host.appendChild(note);
 
   for (const trap of TRAPS) {
     const runtime = state.traps[trap.id];
-    const triggered = trapTriggered(state, trap.id);
     const check = canArmTrap(state, trap.id);
 
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = `card trap-card is-${runtime.status}`;
 
     const head = document.createElement('div');
-    head.className = 'card-head';
-    const h = document.createElement('h3');
-    h.textContent = trap.name;
+    head.className = 'trap-head';
+    const icon = document.createElement('span');
+    icon.className = 'card-icon';
+    icon.textContent = trap.icon;
+    const name = document.createElement('span');
+    name.className = 'card-name';
+    name.textContent = trap.name;
     const price = document.createElement('span');
     price.className = 'card-cost';
-    price.textContent = `${trap.cost} Drift`;
-    head.append(h, price);
+    price.textContent = trap.cost;
+    head.append(icon, name, price);
 
-    const status = document.createElement('span');
-    status.className = `trap-status is-${runtime.status}`;
-    status.textContent =
-      runtime.status === 'triggered'
-        ? `triggered on turn ${runtime.firedTurn}`
-        : runtime.status === 'missed'
-          ? 'missed — trigger passed'
-          : runtime.status;
-
-    const meta = document.createElement('dl');
-    meta.className = 'trap-meta';
-    const rows = [
+    const rows = document.createElement('div');
+    rows.className = 'trap-rows';
+    for (const [k, v] of [
       ['Trigger', trap.triggerText],
       ['Effect', trap.effectText],
-      ['Cost / tell', trap.tellText],
-      ['Trigger now?', triggered ? 'yes — condition already met' : 'not yet'],
-    ];
-    for (const [k, v] of rows) {
-      const dt = document.createElement('dt');
-      dt.textContent = k;
-      const dd = document.createElement('dd');
-      dd.textContent = v;
-      meta.append(dt, dd);
+    ]) {
+      const row = document.createElement('p');
+      const key = document.createElement('span');
+      key.textContent = k;
+      row.append(key, document.createTextNode(v));
+      rows.appendChild(row);
     }
 
     const foot = document.createElement('div');
     foot.className = 'card-foot';
-    foot.appendChild(status);
-    const right = document.createElement('div');
-    right.style.display = 'flex';
-    right.style.alignItems = 'center';
-    right.style.gap = '8px';
-    if (!check.ok) {
-      const reason = document.createElement('span');
-      reason.className = 'card-reason';
-      reason.textContent = check.reason;
-      right.appendChild(reason);
-    }
+    const status = document.createElement('span');
+    status.className = `trap-status is-${runtime.status}`;
+    status.textContent =
+      runtime.status === 'triggered'
+        ? `fired · turn ${runtime.firedTurn}`
+        : runtime.status === 'missed'
+          ? 'missed'
+          : runtime.status;
+    status.title = trap.tellText;
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = 'Arm';
     button.disabled = !check.ok;
+    if (!check.ok) button.title = check.reason;
     button.addEventListener('click', () => handlers.onArmTrap(trap.id));
-    right.appendChild(button);
-    foot.append(right);
+    foot.append(status, button);
 
-    card.append(head, meta, foot);
+    card.append(head, rows, foot);
     host.appendChild(card);
   }
 }
@@ -488,20 +452,13 @@ function renderTrapCards(state, host, handlers) {
 export function renderLog(state) {
   const host = $('log');
   host.innerHTML = '';
-  const entries = state.turnReport.length ? state.turnReport : state.log.slice(-8);
-  $('log-note').textContent = state.turnReport.length
-    ? `Turn ${state.turn} · ${entries.length} development${entries.length === 1 ? '' : 's'}`
-    : 'Everything that changed, and why.';
+  const entries = state.turnReport.length ? state.turnReport : state.log.slice(-6);
+  $('log-note').textContent = state.turnReport.length ? `Turn ${state.turn}` : '';
 
   for (const entry of entries) {
     const li = document.createElement('li');
     li.className = `kind-${entry.kind}${entry.pivotal ? ' is-pivotal' : ''}`;
-    const turn = document.createElement('span');
-    turn.className = 'log-turn';
-    turn.textContent = `T${entry.turn}`;
-    const text = document.createElement('span');
-    text.textContent = entry.text;
-    li.append(turn, text);
+    li.textContent = entry.text;
     host.appendChild(li);
   }
 }
@@ -514,10 +471,10 @@ export function renderEndScreen(state) {
   }
   const { result, title, summary } = state.outcome;
   overlay.querySelector('.dialog').className = `dialog is-${result}`;
-  $('end-title').textContent = result === 'win' ? `${title} — you win` : `${title} — you lose`;
+  $('end-title').textContent = result === 'win' ? title : 'Humanity won';
   $('end-summary').textContent = `${summary} Collapse ${Math.round(state.collapse)}% · cure ${Math.round(
     state.cure,
-  )}% · cooperation ${Math.round(state.cooperation)} · turn ${state.turn} (day ${state.day}).`;
+  )}% · turn ${state.turn}.`;
 
   const list = $('end-timeline');
   list.innerHTML = '';
@@ -525,7 +482,7 @@ export function renderEndScreen(state) {
     const li = document.createElement('li');
     const when = document.createElement('span');
     when.className = 'timeline-when';
-    when.textContent = `T${entry.turn} · D${entry.day}`;
+    when.textContent = `T${entry.turn}`;
     const text = document.createElement('span');
     text.textContent = entry.text;
     li.append(when, text);
@@ -543,7 +500,7 @@ export function renderAll(state, view, handlers) {
   renderEndScreen(state);
   renderRegionDetail(state, view.selectedRegion);
   $('end-turn').disabled = state.phase !== 'planning';
-  $('end-turn').textContent = state.phase === 'setup' ? 'Seed patient zero first' : 'End turn';
+  $('end-turn').textContent = state.phase === 'setup' ? 'Choose a start' : 'End turn';
   for (const tab of document.querySelectorAll('.tab')) {
     const active = tab.dataset.track === view.track;
     tab.classList.toggle('is-active', active);

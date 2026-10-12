@@ -17,10 +17,11 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
 
-// Dependency order: rng → data → engine → ui → main.
+// Dependency order: rng → data → worldgeo → engine → ui → main.
 const MODULES = [
   'src/js/rng.js',
   'src/js/data.js',
+  'src/js/worldgeo.js',
   'src/js/engine.js',
   'src/js/ui.js',
   'src/js/main.js',
@@ -39,6 +40,20 @@ function stripModuleSyntax(source) {
       .trim()
   );
 }
+
+// Every module one of ours imports must be in MODULES, or the bundle silently
+// loses a dependency and the page renders blank.
+function assertComplete() {
+  const known = new Set(MODULES.map((p) => p.split('/').pop()));
+  for (const path of MODULES) {
+    for (const [, spec] of read(path).matchAll(/from\s+['"]\.\/([^'"]+)['"]/g)) {
+      if (!known.has(spec)) {
+        throw new Error(`${path} imports ./${spec}, which is missing from MODULES in tools/build.js`);
+      }
+    }
+  }
+}
+assertComplete();
 
 const bundle = MODULES.map((path) => {
   const code = stripModuleSyntax(read(path));
