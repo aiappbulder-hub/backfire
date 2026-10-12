@@ -1,4 +1,5 @@
-/* Backfire — dark geopolitical console. Restrained colour, crisp hierarchy. */
+/* Backfire — one-screen strategy console. The map owns the screen; spending
+   happens in panels that slide over it. Nothing scrolls except panel bodies. */
 
 :root {
   --bg: #0a0d12;
@@ -13,7 +14,6 @@
   --red: #e0453c;
   --red-dim: #7d2b27;
   --blue: #3d8ae0;
-  --blue-dim: #26527f;
   --neutral: #7e8a9c;
 
   --drift: #f0b429;
@@ -27,8 +27,6 @@
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  /* The game commits to one dark visual world; tell the browser so that
-     native controls and scrollbars follow it. */
   color-scheme: dark;
 }
 
@@ -38,6 +36,7 @@
 
 html,
 body {
+  height: 100%;
   margin: 0;
   padding: 0;
 }
@@ -47,8 +46,8 @@ body {
   color: var(--ink);
   font-family: var(--sans);
   font-size: 15px;
-  line-height: 1.5;
-  padding-bottom: 76px;
+  line-height: 1.45;
+  overflow: hidden; /* the page never scrolls; panels scroll inside themselves */
   -webkit-text-size-adjust: 100%;
 }
 
@@ -60,77 +59,59 @@ h3 {
   letter-spacing: 0.02em;
 }
 
-abbr {
-  text-decoration: none;
-  color: var(--ink-faint);
-  cursor: help;
-}
-
 .muted {
   color: var(--ink-faint);
 }
 
-/* --- Top bar ------------------------------------------------------------ */
+/* --- Shell -------------------------------------------------------------- */
 
-.topbar {
+.app {
+  height: 100%;
   display: grid;
-  grid-template-columns: minmax(170px, auto) auto auto 1fr auto;
-  gap: 18px;
+  grid-template-rows: auto auto minmax(180px, 1fr) auto auto;
+}
+
+/* --- HUD ---------------------------------------------------------------- */
+
+.hud {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
   align-items: center;
-  padding: 12px 18px;
+  gap: 18px;
+  padding: 8px 14px;
   background: linear-gradient(180deg, #121926, #0c1118);
   border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: env(safe-area-inset-top, 0px);
-  z-index: 20;
 }
 
-.brand h1 {
-  font-size: 22px;
-  letter-spacing: 0.22em;
+.hud-brand h1 {
+  font-size: 17px;
+  letter-spacing: 0.2em;
+  line-height: 1.1;
 }
 
-.brand p {
-  margin: 2px 0 0;
+.hud-brand span {
+  font-family: var(--mono);
   font-size: 11px;
   color: var(--ink-faint);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
-.clock {
+.hud-drift {
   display: flex;
-  flex-direction: column;
-  font-family: var(--mono);
-  line-height: 1.25;
-}
-
-.clock-turn {
-  font-size: 15px;
-}
-
-.clock-day {
-  font-size: 12px;
-  color: var(--ink-faint);
-}
-
-.drift {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding-left: 18px;
+  align-items: baseline;
+  gap: 7px;
+  padding-left: 16px;
   border-left: 1px solid var(--line-soft);
 }
 
 .drift-value {
   font-family: var(--mono);
-  font-size: 24px;
+  font-size: 23px;
   color: var(--drift);
-  line-height: 1.1;
+  line-height: 1;
 }
 
 .drift-label {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--ink-faint);
@@ -141,41 +122,47 @@ abbr {
   color: var(--ink-dim);
 }
 
-.races {
+.hud-races {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 20px;
+  gap: 3px 16px;
   min-width: 0;
 }
 
-.race-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 11px;
+.race {
+  display: grid;
+  grid-template-columns: 58px 1fr 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.race-name {
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--ink-dim);
-  margin-bottom: 4px;
+}
+
+.race-value {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
 }
 
 .race-note {
-  margin: 4px 0 0;
-  font-size: 11px;
-  color: var(--ink-faint);
+  grid-column: 1 / -1;
   font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-align: right;
 }
 
 .bar {
-  height: 9px;
+  height: 8px;
   background: #05080c;
   border: 1px solid var(--line);
   border-radius: 99px;
   overflow: hidden;
-}
-
-.bar-sm {
-  height: 6px;
 }
 
 .bar-fill {
@@ -205,25 +192,26 @@ abbr {
   background: var(--invest);
 }
 
-.help-button {
+.hud-help {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   background: transparent;
   border: 1px solid var(--line);
   color: var(--ink-dim);
-  padding: 7px 14px;
-  border-radius: var(--radius);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
 }
 
-.help-button:hover {
+.hud-help:hover {
   color: var(--ink);
   border-color: var(--ink-faint);
 }
 
-/* --- Meter strip -------------------------------------------------------- */
+/* --- Political chips ---------------------------------------------------- */
 
-.meters {
+.chips {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 1px;
@@ -231,121 +219,65 @@ abbr {
   border-bottom: 1px solid var(--line);
 }
 
-.meter {
+.chip {
   background: var(--bg-panel);
-  padding: 9px 14px;
+  border: 0;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  padding: 5px 12px 6px;
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-areas:
-    'name value'
-    'bar bar'
-    'note note';
-  gap: 3px 8px;
+  gap: 1px 6px;
   align-items: center;
+  cursor: help;
 }
 
-.meter-name {
-  grid-area: name;
-  font-size: 11px;
+.chip-name {
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.09em;
   color: var(--ink-dim);
 }
 
-.meter .bar {
-  grid-area: bar;
-}
-
-.meter-value {
-  grid-area: value;
+.chip-value {
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.meter-big {
-  grid-area: bar;
-  font-family: var(--mono);
-  font-size: 20px;
-  line-height: 1.1;
+.chip-bar {
+  grid-column: 1 / -1;
+  display: block;
+  height: 4px;
+  background: #05080c;
+  border-radius: 99px;
+  overflow: hidden;
 }
 
-.meter-note {
-  grid-area: note;
-  font-size: 10px;
+.chip-sub {
+  grid-column: 1 / -1;
+  font-size: 9px;
+  font-style: normal;
   color: var(--ink-faint);
 }
 
-.meter.is-danger .meter-value {
+.chip.is-danger .chip-value {
   color: var(--red);
 }
 
-/* --- Layout ------------------------------------------------------------- */
+/* --- Stage (the map owns the screen) ------------------------------------ */
 
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr);
-  grid-template-areas:
-    'map brief'
-    'map actions'
-    'log actions';
-  gap: 14px;
-  padding: 14px 18px;
-  align-items: start;
+.stage {
+  position: relative;
+  min-height: 0;
+  background: #0b1119;
+  overflow: hidden;
 }
-
-.map-panel {
-  grid-area: map;
-}
-.brief-panel {
-  grid-area: brief;
-}
-.action-panel {
-  grid-area: actions;
-}
-.log-panel {
-  grid-area: log;
-}
-
-.panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 12px 14px 14px;
-}
-
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.panel-head h2 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--ink-dim);
-}
-
-.panel-head p {
-  margin: 0;
-  font-size: 11px;
-  color: var(--ink-faint);
-  text-align: right;
-}
-
-/* --- Map ---------------------------------------------------------------- */
 
 #map {
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
-  background: #0b1119;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
 }
 
 .graticule line {
@@ -436,26 +368,46 @@ abbr {
   pointer-events: none;
 }
 
+.map-hint {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--ink-dim);
+  background: rgba(10, 14, 20, 0.8);
+  border: 1px solid var(--line-soft);
+  border-radius: 99px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .legend {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
+  gap: 3px 10px;
   list-style: none;
-  margin: 9px 0 0;
+  margin: 0;
   padding: 0;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--ink-faint);
+  pointer-events: none;
 }
 
 .legend li {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .swatch {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 2px;
   display: inline-block;
 }
@@ -478,18 +430,25 @@ abbr {
   color: var(--ink-dim);
 }
 
-.region-detail {
-  margin-top: 10px;
-  padding: 9px 12px;
-  background: var(--bg-raised);
-  border: 1px solid var(--line-soft);
+/* Floating detail card for the selected region. */
+.region-card {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 210px;
+  padding: 9px 11px;
+  background: rgba(17, 22, 31, 0.95);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  min-height: 54px;
-  position: relative;
 }
 
-.region-detail h3 {
+.region-card[hidden] {
+  display: none;
+}
+
+.region-card h3 {
   font-size: 14px;
+  padding-right: 48px;
 }
 
 .detail-sub {
@@ -500,133 +459,208 @@ abbr {
 
 .detail-figure {
   position: absolute;
-  top: 8px;
-  right: 12px;
+  top: 7px;
+  right: 11px;
   margin: 0;
   font-family: var(--mono);
-  font-size: 22px;
+  font-size: 21px;
   color: var(--red);
 }
 
-/* --- Briefing ----------------------------------------------------------- */
+/* --- Ticker ------------------------------------------------------------- */
 
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: var(--line-soft);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
+.ticker {
+  margin: 0;
+  padding: 5px 14px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  background: #0c1118;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
   overflow: hidden;
-  margin-bottom: 10px;
+  text-overflow: ellipsis;
+  min-height: 27px;
 }
 
-.stat {
+.ticker b {
+  color: var(--drift);
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+/* --- Dock --------------------------------------------------------------- */
+
+.dock {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr) auto;
+  gap: 6px;
+  padding: 8px 14px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(0deg, #0c1118, #121926);
+  border-top: 1px solid var(--line);
+}
+
+.dock-btn {
   background: var(--bg-raised);
-  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-dim);
+  font: inherit;
+  padding: 6px 4px;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1px;
+  min-width: 0;
 }
 
-.stat-value {
-  font-family: var(--mono);
-  font-size: 17px;
+.dock-btn:hover {
   color: var(--ink);
+  border-color: var(--ink-faint);
 }
 
-.stat-name {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-faint);
-  text-align: center;
-}
-
-.intent {
-  border-left: 2px solid var(--line);
-  padding: 2px 0 2px 9px;
-  margin-bottom: 6px;
-}
-
-.intent.bloc-red {
-  border-color: var(--red);
-}
-
-.intent.bloc-blue {
-  border-color: var(--blue);
-}
-
-.intent strong {
-  font-size: 13px;
-}
-
-.intent p {
-  margin: 0;
-  font-size: 11px;
-  color: var(--ink-faint);
-}
-
-.risk-list h3 {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-faint);
-  margin: 10px 0 4px;
-}
-
-.risk {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 12px;
-  padding: 3px 0;
-  border-bottom: 1px dotted var(--line-soft);
-  cursor: help;
-}
-
-.risk:last-child {
-  border-bottom: 0;
-}
-
-.risk-chance {
-  font-family: var(--mono);
-  color: var(--tension);
-}
-
-/* --- Action cards ------------------------------------------------------- */
-
-.tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 9px;
-}
-
-.tab {
-  flex: 1;
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  color: var(--ink-dim);
-  padding: 7px 4px;
-  font: inherit;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.tab.is-active {
+.dock-btn.is-open {
   background: #1d2735;
   color: var(--ink);
   border-color: var(--ink-faint);
 }
 
-.cards {
+.dock-icon {
+  font-size: 15px;
+  line-height: 1.1;
+  color: var(--drift);
+}
+
+.dock-btn.is-open .dock-icon {
+  color: var(--drift);
+}
+
+.dock-text {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.dock-btn .badge {
+  position: absolute;
+}
+
+.dock-end {
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  color: #ffeceb;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 8px 26px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.dock-end:hover:not(:disabled) {
+  background: #94322c;
+}
+
+.dock-end:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Slide-over sheet --------------------------------------------------- */
+
+.sheet {
+  /* Confined to the map stage: the HUD and the dock stay visible and usable
+     while a panel is open, so you can always end the turn. */
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.sheet[hidden] {
+  display: none;
+}
+
+.sheet-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  animation: slide-in 0.18s ease;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0.4;
+  }
+}
+
+.sheet-head {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet-head h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+}
+
+.sheet-drift {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+}
+
+.sheet-drift b {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--drift);
+}
+
+.sheet-close {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-dim);
+  font: inherit;
+  cursor: pointer;
+}
+
+.sheet-close:hover {
+  color: var(--ink);
+}
+
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 18px;
   display: grid;
   gap: 7px;
+  align-content: start;
 }
+
+/* --- Cards inside the sheet --------------------------------------------- */
 
 .card {
   background: var(--bg-raised);
@@ -634,7 +668,6 @@ abbr {
   border-radius: var(--radius);
 }
 
-/* A whole action is one button: icon, name, one line of effect, price. */
 .action-card {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -703,7 +736,7 @@ abbr {
 }
 
 .track-note {
-  margin: 0 0 3px;
+  margin: 0 0 2px;
   font-size: 11px;
   color: var(--ink-faint);
 }
@@ -802,22 +835,100 @@ abbr {
   text-decoration: line-through;
 }
 
-/* --- Log ---------------------------------------------------------------- */
+/* --- Brief -------------------------------------------------------------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.stat {
+  background: var(--bg-raised);
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.stat-value {
+  font-family: var(--mono);
+  font-size: 17px;
+}
+
+.stat-name {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+.intent {
+  border-left: 2px solid var(--line);
+  padding: 2px 0 2px 9px;
+}
+
+.intent.bloc-red {
+  border-color: var(--red);
+}
+
+.intent.bloc-blue {
+  border-color: var(--blue);
+}
+
+.intent strong {
+  font-size: 13px;
+}
+
+.intent p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.sheet-body h3 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+  margin-top: 4px;
+}
+
+.risk {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px dotted var(--line-soft);
+  cursor: help;
+}
+
+.risk-chance {
+  font-family: var(--mono);
+  color: var(--tension);
+}
+
+/* --- Report ------------------------------------------------------------- */
 
 .log {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 260px;
-  overflow-y: auto;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .log li {
-  padding: 4px 0 4px 9px;
-  font-size: 12px;
+  padding: 5px 0 5px 9px;
   border-left: 2px solid var(--line);
-  margin-bottom: 4px;
+  margin-bottom: 5px;
+  color: var(--ink-dim);
 }
 
 .log li.kind-spread {
@@ -841,74 +952,7 @@ abbr {
 
 .log li.is-pivotal {
   background: #171f2b;
-}
-
-.log-turn {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-faint);
-  margin-right: 7px;
-}
-
-/* --- Action bar --------------------------------------------------------- */
-
-.actionbar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 18px;
-  padding-bottom: calc(11px + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(0deg, #0c1118, #121926);
-  border-top: 1px solid var(--line);
-  z-index: 20;
-}
-
-button.primary {
-  background: var(--red-dim);
-  border: 1px solid var(--red);
-  color: #ffeceb;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  padding: 10px 26px;
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-button.primary:hover:not(:disabled) {
-  background: #94322c;
-}
-
-button.primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-button.ghost {
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--ink-dim);
-  font: inherit;
-  font-size: 13px;
-  padding: 9px 16px;
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.seed {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--ink-faint);
-}
-
-.seed code {
-  font-family: var(--mono);
-  color: var(--ink-dim);
+  color: var(--ink);
 }
 
 /* --- Overlays ----------------------------------------------------------- */
@@ -916,7 +960,7 @@ button.ghost {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(5, 8, 12, 0.86);
+  background: rgba(5, 8, 12, 0.88);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -986,7 +1030,7 @@ button.ghost {
 
 .timeline li {
   display: grid;
-  grid-template-columns: 74px 1fr;
+  grid-template-columns: 42px 1fr;
   gap: 10px;
   padding: 6px 0;
   border-bottom: 1px dotted var(--line);
@@ -998,112 +1042,154 @@ button.ghost {
   font-size: 12px;
 }
 
+button.primary {
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  color: #ffeceb;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 26px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
 .dialog-actions {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
 }
 
-/* --- Responsive --------------------------------------------------------- */
+/* --- Narrow screens ----------------------------------------------------- */
 
-@media (max-width: 1080px) {
-  .topbar {
+@media (max-width: 760px) {
+  .hud {
     grid-template-columns: 1fr auto auto;
-    grid-template-areas:
-      'brand clock drift'
-      'races races races'
-      'help help help';
-  }
-  .brand {
-    grid-area: brand;
-  }
-  .clock {
-    grid-area: clock;
-  }
-  .drift {
-    grid-area: drift;
-    border-left: 0;
-    padding-left: 0;
-    align-items: flex-end;
-  }
-  .races {
-    grid-area: races;
-  }
-  .help-button {
-    grid-area: help;
-    justify-self: start;
-  }
-
-  .meters {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .layout {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      'map'
-      'brief'
-      'actions'
-      'log';
-  }
-}
-
-@media (max-width: 620px) {
-  body {
-    font-size: 14px;
-    padding-bottom: 70px;
-  }
-
-  .topbar {
-    gap: 12px;
-    padding: 10px 12px;
-  }
-
-  .brand h1 {
-    font-size: 18px;
-  }
-
-  .races {
-    grid-template-columns: 1fr;
     gap: 10px;
+    padding: 7px 11px;
   }
 
-  .meters {
-    grid-template-columns: repeat(2, 1fr);
+  .hud-races {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 
-  .layout {
-    padding: 12px;
-    gap: 12px;
+  .race {
+    grid-template-columns: 52px 1fr 34px;
   }
 
-  .legend {
-    font-size: 10px;
-    gap: 5px 10px;
+  .hud-drift {
+    padding-left: 10px;
   }
 
-  /* The map is only ~350px wide here: continent shapes carry the identity,
-     so drop the names and make the live figures readable instead. */
+  .chips {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .chip {
+    padding: 4px 6px 5px;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .chip-name {
+    font-size: 8.5px;
+  }
+
+  /* The map is narrow here: continent shapes carry the identity, so drop the
+     names and make the live figures readable instead. */
   .region-label {
     display: none;
   }
 
   .region-figure {
-    font-size: 30px;
-    stroke-width: 7px;
+    font-size: 26px;
+    stroke-width: 6px;
   }
 
-
-  .log {
-    max-height: 220px;
+  /* Keep the HUD to two rows: the help button shares the top row. */
+  .hud-brand {
+    grid-column: 1;
+    grid-row: 1;
   }
 
-  button.primary {
-    flex: 1;
+  .hud-drift {
+    grid-column: 2;
+    grid-row: 1;
   }
 
-  .seed {
+  .hud-help {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .hud-races {
+    grid-row: 2;
+  }
+
+  /* The map is short here, so the detail sits along its bottom edge instead
+     of covering the eastern half of the world. */
+  .region-card {
+    width: auto;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    padding: 6px 11px;
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+  }
+
+  .region-card h3 {
+    padding-right: 0;
+    font-size: 13px;
+  }
+
+  .detail-figure {
+    position: static;
+    font-size: 15px;
+    margin-left: auto;
+  }
+
+  .region-card .detail-sub {
+    margin: 0;
+  }
+
+  .legend {
     display: none;
+  }
+
+  .dock {
+    grid-template-columns: repeat(5, 1fr);
+    padding: 7px 10px;
+    padding-bottom: calc(7px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .dock-end {
+    grid-column: 1 / -1;
+    padding: 9px;
+  }
+
+  .sheet-panel {
+    width: 100%;
+    top: auto;
+    height: 62%;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 10px 10px 0 0;
+    animation: slide-up 0.18s ease;
+  }
+
+  @keyframes slide-up {
+    from {
+      transform: translateY(20px);
+      opacity: 0.4;
+    }
   }
 }
 
@@ -1111,5 +1197,9 @@ button.ghost {
   .bar-fill,
   .infection {
     transition: none;
+  }
+
+  .sheet-panel {
+    animation: none;
   }
 }

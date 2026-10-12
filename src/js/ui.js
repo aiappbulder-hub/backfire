@@ -17,7 +17,6 @@ import {
   metrics,
   seedableRegions,
   transmission,
-  trapTriggered,
   turnsUntilSummit,
   visibleInfection,
 } from './engine.js';
@@ -28,9 +27,16 @@ const pct = (v) => `${Math.round(v * 100)}%`;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const BLOC_LABEL = { red: 'Red Bloc', blue: 'Blue Bloc', neutral: 'Neutral' };
-// Base landmass colours, before infection is painted over them.
 const BLOC_FILL = { red: '#3a2026', blue: '#1b2a3f', neutral: '#242a33' };
 const BLOC_EDGE = { red: '#e0453c', blue: '#3d8ae0', neutral: '#6d7988' };
+
+const SHEET_TITLES = {
+  spread: 'Spread',
+  traps: 'Traps',
+  influence: 'Influence',
+  brief: 'Intelligence brief',
+  log: 'Turn report',
+};
 
 function el(tag, attrs = {}, text = null) {
   const node = document.createElementNS(SVG_NS, tag);
@@ -60,11 +66,11 @@ export function renderMap(state, view, handlers) {
 
   const canSeedNow =
     state.phase === 'setup' ||
-    (state.phase === 'planning' && view.track === 'spread' && state.drift >= actionCost(state, 'seed'));
+    (state.phase === 'planning' && view.sheet === 'spread' && state.drift >= actionCost(state, 'seed'));
   const seedable = state.phase === 'setup' ? REGIONS.map((r) => r.id) : seedableRegions(state);
 
-  // Ocean and graticule.
   svg.appendChild(el('rect', { x: 0, y: 0, width: 1000, height: 500, fill: '#0b1119' }));
+
   const grid = el('g', { class: 'graticule' });
   for (let lon = -150; lon <= 150; lon += 30) {
     const [x] = project([lon, 0]);
@@ -76,7 +82,6 @@ export function renderMap(state, view, handlers) {
   }
   svg.appendChild(grid);
 
-  // Routes, drawn under the labels so the map stays readable.
   const routes = el('g', { class: 'routes' });
   for (const e of EDGES) {
     const [x1, y1] = project(LANDMASSES[e.a].label);
@@ -91,7 +96,6 @@ export function renderMap(state, view, handlers) {
   }
   svg.appendChild(routes);
 
-  // Landmasses.
   for (const region of REGIONS) {
     const rs = state.regions[region.id];
     const seen = visibleInfection(state, region.id);
@@ -130,24 +134,24 @@ export function renderMap(state, view, handlers) {
     }
 
     const [lx, ly] = project(geo.label);
-    const label = el('text', { x: lx, y: ly, class: 'region-label' }, region.short);
-    group.appendChild(label);
+    group.appendChild(el('text', { x: lx, y: ly, class: 'region-label' }, region.short));
     if (seen.value > 0.001 || rs.cleared) {
       group.appendChild(
         el(
           'text',
           { x: lx, y: ly + 15, class: 'region-figure' },
-          rs.cleared ? '✓ cleared' : `${status.glyph} ${pct(seen.value)}`,
+          rs.cleared ? '✓' : `${status.glyph} ${pct(seen.value)}`,
         ),
       );
     }
+
     // A generous invisible target over the label, so tapping a region's name
     // selects it — thin coastlines are awkward to hit, especially on a phone.
     group.appendChild(
       el('circle', {
         cx: lx,
         cy: ly - 4,
-        r: 30,
+        r: 34,
         class: 'hit',
         fill: '#000',
         'fill-opacity': '0',
@@ -166,8 +170,6 @@ export function renderMap(state, view, handlers) {
         handlers.onSelectRegion(region.id);
       }
     });
-    group.addEventListener('mouseenter', () => renderRegionDetail(state, region.id));
-    group.addEventListener('focus', () => renderRegionDetail(state, region.id));
 
     svg.appendChild(group);
   }
@@ -175,14 +177,14 @@ export function renderMap(state, view, handlers) {
   const m = metrics(state);
   $('map-status').textContent =
     state.phase === 'setup'
-      ? 'Choose where it starts.'
-      : `${m.infectedRegions}/12 regions · ${pct(m.globalInfection)} infected`;
+      ? 'Tap a region to start the outbreak there'
+      : `${m.infectedRegions}/12 regions · ${pct(m.globalInfection)} of the world infected`;
 }
 
-export function renderRegionDetail(state, regionId) {
+function renderRegionCard(state, regionId) {
   const box = $('region-detail');
   if (!regionId) {
-    box.innerHTML = '<p class="muted">Hover or tap a region.</p>';
+    box.hidden = true;
     return;
   }
   const region = REGION_BY_ID[regionId];
@@ -194,11 +196,11 @@ export function renderRegionDetail(state, regionId) {
   h.textContent = region.name;
   const sub = document.createElement('p');
   sub.className = 'detail-sub';
-  const bits = [BLOC_LABEL[region.bloc], `${region.pop}M`, `${status.glyph} ${status.word}`.trim()];
+  const bits = [BLOC_LABEL[region.bloc], `${region.pop}M`];
+  if (status.word !== 'clean') bits.push(status.word);
   if (seen.unverified) bits.push('unverified');
-  if (region.harsh) bits.push('harsh climate');
+  if (region.harsh) bits.push('harsh');
   sub.textContent = bits.join(' · ');
-
   const figure = document.createElement('p');
   figure.className = 'detail-figure';
   figure.textContent = pct(seen.value);
@@ -210,18 +212,18 @@ export function renderRegionDetail(state, regionId) {
     treat.textContent = `Treatment ${Math.round(state.blocs[region.bloc].treatment)}`;
     box.appendChild(treat);
   }
+  box.hidden = false;
 }
 
 // ---------------------------------------------------------------------------
-// Status bars and meters
+// HUD
 // ---------------------------------------------------------------------------
 
 export function renderStatus(state) {
-  $('clock-turn').textContent = `Turn ${state.turn}`;
-  $('clock-day').textContent = `Day ${state.day}`;
+  $('clock').textContent = `Turn ${state.turn} · Day ${state.day}`;
   $('drift-value').textContent = Math.floor(state.drift);
   $('drift-income').textContent = `+${driftIncome(state)}`;
-  $('seed-value').textContent = state.seed;
+  $('sheet-drift').textContent = Math.floor(state.drift);
 
   $('collapse-value').textContent = `${Math.round(state.collapse)}%`;
   $('collapse-bar').style.width = `${state.collapse}%`;
@@ -230,115 +232,66 @@ export function renderStatus(state) {
 
   const forecast = cureForecast(state);
   $('cure-forecast').textContent = forecast.known
-    ? `~${forecast.turns} turns left`
-    : 'not started';
+    ? `cure in ~${forecast.turns} turns`
+    : 'cure research not started';
 
-  const meters = [
+  const chips = [
     ['coop', state.cooperation, state.cooperation >= CONFIG.cooperationLossThreshold],
     ['tension', state.tension, false],
     ['trust', state.publicTrust, false],
     ['invest', state.investigation, state.investigation >= 70],
   ];
-  for (const [key, value, danger] of meters) {
+  for (const [key, value, danger] of chips) {
     $(`${key}-bar`).style.width = `${value}%`;
     $(`${key}-value`).textContent = Math.round(value);
-    $(`${key}-bar`).closest('.meter').classList.toggle('is-danger', danger);
+    $(`${key}-bar`).closest('.chip').classList.toggle('is-danger', danger);
   }
 
-  $('coop-note').textContent =
+  $('chip-coop').title =
     state.cooperationStreak > 0
-      ? `united ${state.cooperationStreak}/${CONFIG.cooperationLossTurns}`
-      : `lose at ${CONFIG.cooperationLossThreshold}`;
-  $('invest-note').textContent = state.investigationResolved ? 'ruled natural' : 'blocs unite at 100';
+      ? `United ${state.cooperationStreak}/${CONFIG.cooperationLossTurns} turns — you lose at ${CONFIG.cooperationLossTurns}`
+      : `You lose if this holds at ${CONFIG.cooperationLossThreshold} for ${CONFIG.cooperationLossTurns} turns`;
   $('summit-value').textContent = turnsUntilSummit(state);
-  document.querySelector('[data-meter="summit"] .meter-note').textContent = state.sabotageArmed
-    ? 'sabotaged'
-    : 'turns away';
+  $('summit-note').textContent = state.sabotageArmed ? 'sabotaged' : 'turns';
+}
+
+export function renderTicker(state) {
+  const entries = state.turnReport.length ? state.turnReport : state.log;
+  const latest = [...entries].reverse().find((e) => e.pivotal) || entries[entries.length - 1];
+  const host = $('ticker');
+  host.innerHTML = '';
+  if (!latest) return;
+  const tag = document.createElement('b');
+  tag.textContent = `T${latest.turn}`;
+  host.append(tag, document.createTextNode(latest.text));
+  host.title = latest.text;
 }
 
 // ---------------------------------------------------------------------------
-// Briefing
+// Sheets
 // ---------------------------------------------------------------------------
 
-export function renderBriefing(state) {
-  const host = $('briefing');
-  host.innerHTML = '';
-  const brief = state.briefing;
-  if (!brief) {
-    host.innerHTML = '<p class="muted">Choose a starting region.</p>';
+export function renderSheet(state, view, handlers) {
+  const sheet = $('sheet');
+  $('stage').classList.toggle('has-sheet', Boolean(view.sheet));
+  if (!view.sheet) {
+    sheet.hidden = true;
     return;
   }
+  sheet.hidden = false;
+  $('sheet-title').textContent = SHEET_TITLES[view.sheet];
 
-  // Compact stat tiles instead of a wall of label/value rows.
-  const stats = document.createElement('div');
-  stats.className = 'stat-grid';
-  const tiles = [
-    ['Infected', pct(brief.globalInfection)],
-    ['Regions', `${brief.infectedRegions}/12`],
-    ['Transmission', String(Math.round(transmission(state) * 10) / 10)],
-    ['Summit in', `${brief.summitIn}`],
-  ];
-  for (const [k, v] of tiles) {
-    const tile = document.createElement('div');
-    tile.className = 'stat';
-    const value = document.createElement('span');
-    value.className = 'stat-value';
-    value.textContent = v;
-    const name = document.createElement('span');
-    name.className = 'stat-name';
-    name.textContent = k;
-    tile.append(value, name);
-    stats.appendChild(tile);
-  }
-  host.appendChild(stats);
+  const body = $('sheet-body');
+  body.innerHTML = '';
 
-  for (const intent of brief.intentions) {
-    const div = document.createElement('div');
-    div.className = `intent bloc-${intent.id}`;
-    const strong = document.createElement('strong');
-    strong.textContent = intent.name;
-    const p = document.createElement('p');
-    const bits = [intent.intent, `seen ${pct(intent.detected)}`, `treat ${intent.treatment}`];
-    if (intent.extras.length) bits.push(...intent.extras);
-    p.textContent = bits.join(' · ');
-    div.append(strong, p);
-    host.appendChild(div);
-  }
-
-  const risks = document.createElement('div');
-  risks.className = 'risk-list';
-  const rh = document.createElement('h3');
-  rh.textContent = 'Likely next';
-  risks.appendChild(rh);
-  for (const risk of brief.risks) {
-    const div = document.createElement('div');
-    div.className = 'risk';
-    div.title = risk.why; // the reasoning is a tooltip, not another paragraph
-    const name = document.createElement('span');
-    name.textContent = risk.name;
-    const chance = document.createElement('span');
-    chance.className = 'risk-chance';
-    chance.textContent = `${risk.chance}%`;
-    div.append(name, chance);
-    risks.appendChild(div);
-  }
-  host.appendChild(risks);
+  if (view.sheet === 'brief') renderBrief(state, body);
+  else if (view.sheet === 'log') renderLog(state, body);
+  else if (view.sheet === 'traps') renderTraps(state, body, handlers);
+  else renderTrack(state, view, body, handlers);
 }
 
-// ---------------------------------------------------------------------------
-// Action cards
-// ---------------------------------------------------------------------------
-
-export function renderActions(state, view, handlers) {
-  const host = $('actions');
-  host.innerHTML = '';
-
-  if (view.track === 'traps') {
-    renderTrapCards(state, host, handlers);
-    return;
-  }
-
-  for (const action of ACTIONS.filter((a) => a.track === view.track)) {
+function renderTrack(state, view, host, handlers) {
+  for (const action of ACTIONS.filter((a) => a.track === view.sheet)) {
     const bought = state.purchases[action.id] || 0;
     const cost = actionCost(state, action.id);
     const check = canPurchase(state, action.id, view.selectedRegion);
@@ -358,10 +311,14 @@ export function renderActions(state, view, handlers) {
     main.className = 'card-main';
     const name = document.createElement('span');
     name.className = 'card-name';
-    name.textContent = action.name;
+    // The seed action names the region it would hit, so the map selection is obvious.
+    name.textContent =
+      action.needsRegion && view.selectedRegion
+        ? `Seed ${REGION_BY_ID[view.selectedRegion].name}`
+        : action.name;
     const preview = document.createElement('span');
     preview.className = 'card-preview';
-    preview.textContent = check.ok || !check.reason ? action.preview : check.reason;
+    preview.textContent = check.ok ? action.preview : check.reason;
     main.append(name, preview);
 
     const right = document.createElement('span');
@@ -382,10 +339,10 @@ export function renderActions(state, view, handlers) {
   }
 }
 
-function renderTrapCards(state, host, handlers) {
+function renderTraps(state, host, handlers) {
   const note = document.createElement('p');
   note.className = 'track-note';
-  note.textContent = `${armedTrapCount(state)}/${CONFIG.maxArmedTraps} held · never armable after its trigger`;
+  note.textContent = `${armedTrapCount(state)}/${CONFIG.maxArmedTraps} held · a trap can never be armed after its trigger exists`;
   host.appendChild(note);
 
   for (const trap of TRAPS) {
@@ -445,23 +402,84 @@ function renderTrapCards(state, host, handlers) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Log and end screen
-// ---------------------------------------------------------------------------
+function renderBrief(state, host) {
+  const brief = state.briefing;
+  if (!brief) {
+    host.innerHTML = '<p class="muted">Start the outbreak to receive a brief.</p>';
+    return;
+  }
 
-export function renderLog(state) {
-  const host = $('log');
-  host.innerHTML = '';
-  const entries = state.turnReport.length ? state.turnReport : state.log.slice(-6);
-  $('log-note').textContent = state.turnReport.length ? `Turn ${state.turn}` : '';
+  const stats = document.createElement('div');
+  stats.className = 'stat-grid';
+  for (const [k, v] of [
+    ['Infected', pct(brief.globalInfection)],
+    ['Regions', `${brief.infectedRegions}/12`],
+    ['Transmission', String(Math.round(transmission(state) * 10) / 10)],
+    ['Summit in', String(brief.summitIn)],
+  ]) {
+    const tile = document.createElement('div');
+    tile.className = 'stat';
+    const value = document.createElement('span');
+    value.className = 'stat-value';
+    value.textContent = v;
+    const name = document.createElement('span');
+    name.className = 'stat-name';
+    name.textContent = k;
+    tile.append(value, name);
+    stats.appendChild(tile);
+  }
+  host.appendChild(stats);
 
+  for (const intent of brief.intentions) {
+    const div = document.createElement('div');
+    div.className = `intent bloc-${intent.id}`;
+    const strong = document.createElement('strong');
+    strong.textContent = intent.name;
+    const p = document.createElement('p');
+    p.textContent = [intent.intent, `seen ${pct(intent.detected)}`, `treat ${intent.treatment}`, ...intent.extras].join(
+      ' · ',
+    );
+    div.append(strong, p);
+    host.appendChild(div);
+  }
+
+  const h = document.createElement('h3');
+  h.textContent = 'Likely next';
+  host.appendChild(h);
+  for (const risk of brief.risks) {
+    const div = document.createElement('div');
+    div.className = 'risk';
+    div.title = risk.why;
+    const name = document.createElement('span');
+    name.textContent = risk.name;
+    const chance = document.createElement('span');
+    chance.className = 'risk-chance';
+    chance.textContent = `${risk.chance}%`;
+    div.append(name, chance);
+    host.appendChild(div);
+  }
+}
+
+function renderLog(state, host) {
+  const entries = state.turnReport.length ? state.turnReport : state.log.slice(-10);
+  const list = document.createElement('ol');
+  list.className = 'log';
   for (const entry of entries) {
     const li = document.createElement('li');
     li.className = `kind-${entry.kind}${entry.pivotal ? ' is-pivotal' : ''}`;
     li.textContent = entry.text;
-    host.appendChild(li);
+    list.appendChild(li);
   }
+  if (!entries.length) {
+    host.innerHTML = '<p class="muted">Nothing has happened yet.</p>';
+    return;
+  }
+  host.appendChild(list);
 }
+
+// ---------------------------------------------------------------------------
+// End screen
+// ---------------------------------------------------------------------------
 
 export function renderEndScreen(state) {
   const overlay = $('end-screen');
@@ -494,16 +512,14 @@ export function renderEndScreen(state) {
 export function renderAll(state, view, handlers) {
   renderStatus(state);
   renderMap(state, view, handlers);
-  renderBriefing(state);
-  renderActions(state, view, handlers);
-  renderLog(state);
+  renderRegionCard(state, view.selectedRegion);
+  renderTicker(state);
+  renderSheet(state, view, handlers);
   renderEndScreen(state);
-  renderRegionDetail(state, view.selectedRegion);
+
   $('end-turn').disabled = state.phase !== 'planning';
-  $('end-turn').textContent = state.phase === 'setup' ? 'Choose a start' : 'End turn';
-  for (const tab of document.querySelectorAll('.tab')) {
-    const active = tab.dataset.track === view.track;
-    tab.classList.toggle('is-active', active);
-    tab.setAttribute('aria-selected', String(active));
+  $('end-turn').textContent = state.phase === 'setup' ? 'Pick a start' : 'End turn';
+  for (const btn of document.querySelectorAll('.dock-btn')) {
+    btn.classList.toggle('is-open', btn.dataset.sheet === view.sheet);
   }
 }

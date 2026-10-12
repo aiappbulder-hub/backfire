@@ -2,151 +2,130 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Backfire</title>
     <meta
       name="description"
-      content="Backfire — a pandemic strategy prototype where humanity's response is the player's weapon."
+      content="A pandemic strategy game where humanity's response is your weapon — arm a trap before its trigger exists."
     />
     <link rel="stylesheet" href="src/css/styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <div class="brand">
-        <h1>BACKFIRE</h1>
-        <p>The cure isn’t the end. It’s the trap.</p>
-      </div>
+    <div class="app">
+      <header class="hud">
+        <div class="hud-brand">
+          <h1>BACKFIRE</h1>
+          <span id="clock">Turn 1 · Day 0</span>
+        </div>
 
-      <div class="clock">
-        <span class="clock-turn" id="clock-turn">Turn 1</span>
-        <span class="clock-day" id="clock-day">Day 0</span>
-      </div>
+        <div class="hud-drift">
+          <span class="drift-value" id="drift-value">40</span>
+          <span class="drift-label">Drift <em id="drift-income">+7</em></span>
+        </div>
 
-      <div class="drift">
-        <span class="drift-value" id="drift-value">40</span>
-        <span class="drift-label">Drift <em id="drift-income">+7 / turn</em></span>
-      </div>
-
-      <div class="races">
-        <div class="race">
-          <div class="race-head">
-            <span>Collapse <abbr title="Reach 100 to win">▲</abbr></span>
-            <span id="collapse-value">0%</span>
+        <div class="hud-races">
+          <div class="race">
+            <span class="race-name">Collapse</span>
+            <div class="bar"><i class="bar-fill bar-collapse" id="collapse-bar"></i></div>
+            <span class="race-value" id="collapse-value">0%</span>
           </div>
-          <div class="bar"><i class="bar-fill bar-collapse" id="collapse-bar"></i></div>
-        </div>
-        <div class="race">
-          <div class="race-head">
-            <span>Cure <abbr title="Reaches 100 and you lose">▼</abbr></span>
-            <span id="cure-value">0%</span>
+          <div class="race">
+            <span class="race-name">Cure</span>
+            <div class="bar"><i class="bar-fill bar-cure" id="cure-bar"></i></div>
+            <span class="race-value" id="cure-value">0%</span>
           </div>
-          <div class="bar"><i class="bar-fill bar-cure" id="cure-bar"></i></div>
-          <p class="race-note" id="cure-forecast">Cure forecast: no data yet</p>
+          <span class="race-note" id="cure-forecast">not started</span>
         </div>
+
+        <button class="hud-help" id="help-button" type="button" aria-haspopup="dialog">?</button>
+      </header>
+
+      <div class="chips" aria-label="Political variables">
+        <button class="chip" type="button" data-meter="cooperation" id="chip-coop">
+          <span class="chip-name">Coop</span>
+          <span class="chip-value" id="coop-value">28</span>
+          <i class="chip-bar"><i class="bar-fill bar-coop" id="coop-bar"></i></i>
+        </button>
+        <button class="chip" type="button" data-meter="tension">
+          <span class="chip-name">Tension</span>
+          <span class="chip-value" id="tension-value">46</span>
+          <i class="chip-bar"><i class="bar-fill bar-tension" id="tension-bar"></i></i>
+        </button>
+        <button class="chip" type="button" data-meter="trust">
+          <span class="chip-name">Trust</span>
+          <span class="chip-value" id="trust-value">62</span>
+          <i class="chip-bar"><i class="bar-fill bar-trust" id="trust-bar"></i></i>
+        </button>
+        <button class="chip" type="button" data-meter="investigation">
+          <span class="chip-name">Enquiry</span>
+          <span class="chip-value" id="invest-value">0</span>
+          <i class="chip-bar"><i class="bar-fill bar-invest" id="invest-bar"></i></i>
+        </button>
+        <button class="chip chip-summit" type="button" data-meter="summit">
+          <span class="chip-name">Summit</span>
+          <span class="chip-value" id="summit-value">5</span>
+          <i class="chip-sub" id="summit-note">turns</i>
+        </button>
       </div>
 
-      <button class="help-button" id="help-button" type="button" aria-haspopup="dialog">
-        Rules
-      </button>
-    </header>
+      <main class="stage" id="stage">
+        <div class="map-wrap">
+          <svg
+            id="map"
+            viewBox="0 30 1000 380"
+            role="group"
+            aria-label="World map, twelve regions"
+            preserveAspectRatio="xMidYMid meet"
+          ></svg>
 
-    <section class="meters" aria-label="Political variables">
-      <div class="meter" data-meter="cooperation">
-        <span class="meter-name">Cooperation</span>
-        <div class="bar bar-sm"><i class="bar-fill bar-coop" id="coop-bar"></i></div>
-        <span class="meter-value" id="coop-value">28</span>
-        <span class="meter-note" id="coop-note">loss at 80 for 6 turns</span>
+          <p class="map-hint" id="map-status">Choose where it starts.</p>
+
+          <div class="region-card" id="region-detail" hidden></div>
+
+          <ul class="legend">
+            <li><span class="swatch bloc-red"></span>Red</li>
+            <li><span class="swatch bloc-blue"></span>Blue</li>
+            <li><span class="swatch bloc-neutral"></span>Neutral</li>
+            <li><span class="glyph">▣</span>contained</li>
+            <li><span class="glyph">✓</span>cleared</li>
+            <li><span class="glyph">≈</span>unverified</li>
+          </ul>
+        </div>
+
+      <div class="sheet" id="sheet" hidden>
+        <section class="sheet-panel" role="dialog" aria-modal="false" aria-labelledby="sheet-title">
+          <header class="sheet-head">
+            <h2 id="sheet-title">Spread</h2>
+            <span class="sheet-drift">Drift <b id="sheet-drift">40</b></span>
+            <button class="sheet-close" id="sheet-close" type="button" aria-label="Close">✕</button>
+          </header>
+          <div class="sheet-body" id="sheet-body"></div>
+        </section>
       </div>
-      <div class="meter" data-meter="tension">
-        <span class="meter-name">Tension</span>
-        <div class="bar bar-sm"><i class="bar-fill bar-tension" id="tension-bar"></i></div>
-        <span class="meter-value" id="tension-value">46</span>
-        <span class="meter-note">throttles the bloc border</span>
-      </div>
-      <div class="meter" data-meter="trust">
-        <span class="meter-name">Public trust</span>
-        <div class="bar bar-sm"><i class="bar-fill bar-trust" id="trust-bar"></i></div>
-        <span class="meter-value" id="trust-value">62</span>
-        <span class="meter-note">shapes event odds</span>
-      </div>
-      <div class="meter" data-meter="investigation">
-        <span class="meter-name">Investigation</span>
-        <div class="bar bar-sm"><i class="bar-fill bar-invest" id="invest-bar"></i></div>
-        <span class="meter-value" id="invest-value">0</span>
-        <span class="meter-note" id="invest-note">at 100 the blocs unite</span>
-      </div>
-      <div class="meter" data-meter="summit">
-        <span class="meter-name">Next summit</span>
-        <span class="meter-big" id="summit-value">5</span>
-        <span class="meter-note">turns away</span>
-      </div>
-    </section>
+      </main>
 
-    <main class="layout">
-      <section class="panel map-panel">
-        <div class="panel-head">
-          <h2>World map</h2>
-          <p id="map-status">Choose where it starts.</p>
-        </div>
-        <svg
-          id="map"
-          viewBox="0 30 1000 380"
-          role="group"
-          aria-label="Twelve world regions"
-          preserveAspectRatio="xMidYMid meet"
-        ></svg>
-        <ul class="legend">
-          <li><span class="swatch bloc-red"></span> Red Bloc</li>
-          <li><span class="swatch bloc-blue"></span> Blue Bloc</li>
-          <li><span class="swatch bloc-neutral"></span> Neutral</li>
-          <li><span class="glyph">◌</span> clean</li>
-          <li><span class="glyph">◉</span> infected</li>
-          <li><span class="glyph">▣</span> contained</li>
-          <li><span class="glyph">✓</span> cleared</li>
-          <li><span class="glyph">≈</span> unverified data</li>
-        </ul>
-        <div class="region-detail" id="region-detail">
-          <p class="muted">Tap or hover a region for details.</p>
-        </div>
-      </section>
+      <p class="ticker" id="ticker"></p>
 
-      <section class="panel brief-panel">
-        <div class="panel-head">
-          <h2>Intelligence briefing</h2>
-        </div>
-        <div id="briefing"></div>
-      </section>
+      <nav class="dock" aria-label="Operations">
+        <button class="dock-btn" type="button" data-sheet="spread">
+          <span class="dock-icon">↗</span><span class="dock-text">Spread</span>
+        </button>
+        <button class="dock-btn" type="button" data-sheet="traps">
+          <span class="dock-icon">☣</span><span class="dock-text">Traps</span>
+        </button>
+        <button class="dock-btn" type="button" data-sheet="influence">
+          <span class="dock-icon">◈</span><span class="dock-text">Influence</span>
+        </button>
+        <button class="dock-btn" type="button" data-sheet="brief">
+          <span class="dock-icon">◎</span><span class="dock-text">Brief</span>
+        </button>
+        <button class="dock-btn" type="button" data-sheet="log">
+          <span class="dock-icon">▤</span><span class="dock-text">Report</span>
+        </button>
+        <button class="dock-end" id="end-turn" type="button">End turn</button>
+      </nav>
+    </div>
 
-      <section class="panel action-panel">
-        <div class="panel-head">
-          <h2>Operations</h2>
-        </div>
-        <div class="tabs" role="tablist" aria-label="Operation tracks">
-          <button role="tab" class="tab is-active" data-track="spread" aria-selected="true">
-            Spread
-          </button>
-          <button role="tab" class="tab" data-track="traps" aria-selected="false">Traps</button>
-          <button role="tab" class="tab" data-track="influence" aria-selected="false">
-            Influence
-          </button>
-        </div>
-        <div id="actions" class="cards"></div>
-      </section>
-
-      <section class="panel log-panel">
-        <div class="panel-head">
-          <h2>Turn report</h2>
-          <p id="log-note"></p>
-        </div>
-        <ol id="log" class="log"></ol>
-      </section>
-    </main>
-
-    <footer class="actionbar">
-      <button class="primary" id="end-turn" type="button">End turn</button>
-      <button class="ghost" id="restart" type="button">Restart</button>
-      <span class="seed">seed <code id="seed-value">—</code></span>
-    </footer>
 
     <div class="overlay" id="end-screen" hidden>
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="end-title">
@@ -164,16 +143,16 @@
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
         <h2 id="help-title">How Backfire works</h2>
         <p>
-          You are not trying to build the deadliest pathogen. You are betting on how humanity
-          reacts. Traps must be armed <strong>before</strong> their trigger exists — once treatment
-          or cure research crosses the line, it is too late to buy the trap that exploits it.
+          You are not building the deadliest pathogen. You are betting on how humanity reacts.
+          Traps must be armed <strong>before</strong> their trigger exists — once treatment or cure
+          research crosses the line, it is too late to buy the trap that exploits it.
         </p>
         <h3>Each turn</h3>
         <ol class="help-list">
-          <li>Read the briefing: region changes, bloc intentions, event odds, cure forecast.</li>
+          <li>Read the brief: bloc intentions, event odds, cure forecast.</li>
           <li>Spend Drift on Spread, Traps or Influence — one pool, three competing tracks.</li>
           <li>End the turn: spread, bloc decisions, an event, trap checks, cure progress.</li>
-          <li>Read the turn report to see what changed and why.</li>
+          <li>Read the report to see what changed and why.</li>
         </ol>
         <h3>You win when</h3>
         <p>Collapse reaches 100 — global infection with no countermeasure left standing.</p>
@@ -183,19 +162,19 @@
           <li>Cooperation stays at 80 or above for 6 turns.</li>
           <li>The outbreak burns out entirely from over-lethality.</li>
         </ul>
-        <h3>Things worth knowing</h3>
+        <h3>Worth knowing</h3>
         <ul class="help-list">
+          <li>Collapse only grows while infection is above 25% — below that the world rebuilds.</li>
           <li>Only two traps can be held at once, and holding one costs 10% transmission.</li>
           <li>
-            Investigation at 100 means investigators rule the outbreak natural: blame evaporates,
-            cooperation jumps and the cure speeds up permanently. Bury evidence to slow it.
+            The enquiry at 100 rules the outbreak natural: blame evaporates, cooperation jumps and
+            the cure speeds up permanently. Bury evidence to slow it.
           </li>
           <li>
-            The Red Bloc conceals case numbers until its own outbreak passes 25%. That slows the
-            joint cure, but your map data for its regions is unverified (≈).
+            The Red Bloc hides case numbers until its own outbreak passes 25%. That slows the cure,
+            but your map data for Russia, Central Asia and East Asia reads ≈ unverified.
           </li>
           <li>Summits add cooperation unless you sabotage them beforehand.</li>
-          <li>The cure forecast is an estimate from the latest research rate, not a promise.</li>
         </ul>
         <div class="dialog-actions">
           <button class="primary" id="help-close" type="button">Back to the game</button>

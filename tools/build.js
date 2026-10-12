@@ -55,10 +55,31 @@ function assertComplete() {
 }
 assertComplete();
 
-const bundle = MODULES.map((path) => {
-  const code = stripModuleSyntax(read(path));
-  return `/* ---- ${path} ---- */\n${code}`;
-}).join('\n\n');
+const stripped = MODULES.map((path) => ({ path, code: stripModuleSyntax(read(path)) }));
+
+/**
+ * The modules share one scope once concatenated, so two top-level declarations
+ * of the same name are a syntax error that only shows up in the bundle — the
+ * dev server keeps working because ES modules have separate scopes.
+ */
+function assertNoClashes() {
+  const seen = new Map();
+  const declaration = /^(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm;
+  for (const { path, code } of stripped) {
+    for (const [, name] of code.matchAll(declaration)) {
+      if (seen.has(name) && seen.get(name) !== path) {
+        throw new Error(
+          `"${name}" is declared at the top level of both ${seen.get(name)} and ${path}. ` +
+            'The bundle puts them in one scope — rename one.',
+        );
+      }
+      seen.set(name, path);
+    }
+  }
+}
+assertNoClashes();
+
+const bundle = stripped.map(({ path, code }) => `/* ---- ${path} ---- */\n${code}`).join('\n\n');
 
 const css = read('src/css/styles.css');
 const html = read('index.html');

@@ -65,6 +65,13 @@ loses, and prediction plus timing wins:
 
 A game runs ~20–27 turns, which is the 10–15 minute target.
 
+## Layout
+
+One screen, no scrolling. The map owns the stage; spending happens in a panel
+that opens beside it (below it on phones), so the HUD and the dock — including
+**End turn** — stay usable while a panel is open. The dock has five panels:
+Spread, Traps, Influence, Brief and Report.
+
 ## How a turn works
 
 1. **Intelligence briefing** — region changes, bloc intentions, event odds with
@@ -135,3 +142,6 @@ with no browser, which is what makes the tests and the balance harness possible.
 - Forecasts are honest rather than imperfect — the cure estimate is exact given
   the current rate, where the design calls for degraded intelligence.
 - No save/resume; a refresh starts a new game.
+- The map has no pan or zoom. At phone width the world's 2.63:1 aspect caps it
+  at roughly 150px tall, which makes small regions fiddly to tap; panning and
+  zooming is the real fix.
