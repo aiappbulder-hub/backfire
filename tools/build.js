@@ -81,8 +81,25 @@ assertNoClashes();
 
 const bundle = stripped.map(({ path, code }) => `/* ---- ${path} ---- */\n${code}`).join('\n\n');
 
-const css = read('src/css/styles.css');
+/**
+ * Inline the artwork. The dev server serves src/art/* as real files, but the
+ * bundle is a single document with nothing beside it, so every url(../art/x)
+ * becomes a data URI.
+ */
+function inlineArt(css) {
+  const types = { webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', svg: 'image/svg+xml' };
+  return css.replace(/url\(\.\.\/art\/([^)'"]+)\)/g, (whole, file) => {
+    const ext = file.split('.').pop().toLowerCase();
+    if (!types[ext]) throw new Error(`Unsupported art type for ${file}`);
+    const data = readFileSync(join(root, 'src/art', file)).toString('base64');
+    return `url(data:${types[ext]};base64,${data})`;
+  });
+}
+
+const css = inlineArt(read('src/css/styles.css'));
 const html = read('index.html');
+
+const artCount = (read('src/css/styles.css').match(/url\(\.\.\/art\//g) || []).length;
 
 // Pull the markup out of index.html and drop the tags we are replacing.
 const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -136,3 +153,8 @@ writeFileSync(join(root, 'dist/embed.html'), inner);
 const kb = (s) => `${(Buffer.byteLength(s) / 1024).toFixed(1)}KB`;
 console.log(`dist/backfire.html  ${kb(standalone)}  (open directly from disk)`);
 console.log(`dist/embed.html     ${kb(inner)}  (no outer document tags)`);
+console.log(`${artCount} artwork reference${artCount === 1 ? '' : 's'} inlined as data URIs`);
+
+// Nothing may reference a file that will not exist beside the bundle.
+const dangling = inner.match(/(?:url\(|src=")(?!data:|https?:)[^)"']*(?:art|css|js)\/[^)"']+/g);
+if (dangling) throw new Error(`bundle still references external files: ${dangling.join(', ')}`);

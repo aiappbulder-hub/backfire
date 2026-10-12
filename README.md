@@ -65,6 +65,17 @@ loses, and prediction plus timing wins:
 
 A game runs ~20–27 turns, which is the 10–15 minute target.
 
+## Artwork
+
+The title logo and the trap-card art are cropped from the project's own concept
+board (`a_detailed_game_concept_art_ui_design_reference.png`) and live in
+`src/art/`. The dev server serves them as files; `tools/build.js` inlines them
+as data URIs so the single-file build and any host carry them, and the build
+fails if anything in the bundle still points at a file that will not be there.
+
+They are small source crops (the board is 1536×1024), so each sits under a
+gradient scrim where softness reads as atmosphere rather than a blurry photo.
+
 ## Layout
 
 One screen, no scrolling. The map owns the stage; spending happens in a panel
@@ -119,6 +130,8 @@ index.html           markup and the static UI shell
 src/css/styles.css   dark strategy-console styling, responsive to 390px
 src/js/data.js       tuning constants, regions, edges, actions, traps, events
 src/js/worldgeo.js   coastlines as lon/lat rings, plus the map projection
+src/art/             crops from the project's concept-art board (title logo,
+                     trap card art), inlined as data URIs by the build
 src/js/rng.js        seedable RNG (mulberry32) — runs are reproducible
 src/js/engine.js     all game rules; no DOM access
 src/js/ui.js         all rendering; no game rules

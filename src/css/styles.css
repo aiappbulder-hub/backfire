@@ -1203,3 +1203,122 @@ button.primary {
     animation: none;
   }
 }
+
+/* --- Artwork ------------------------------------------------------------ */
+/* Crops from the project's own concept-art board (src/art/), inlined into the
+   single-file build. Each sits under a scrim so the type stays readable. */
+
+.title-screen {
+  background: radial-gradient(circle at 50% 30%, #12202f 0%, #05080c 70%);
+}
+
+.title-card {
+  max-width: 460px;
+  width: 100%;
+  text-align: center;
+}
+
+.title-art {
+  width: 100%;
+  aspect-ratio: 816 / 296;
+  background-image: url(../art/title.webp);
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.title-pitch {
+  margin: 10px 0 16px;
+  color: var(--ink-dim);
+  font-size: 14px;
+  text-align: left;
+}
+
+.title-points {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+  text-align: left;
+}
+
+.title-points li {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.title-points span {
+  color: var(--drift);
+  font-size: 16px;
+}
+
+#title-begin {
+  width: 100%;
+}
+
+/* Trap card artwork */
+.trap-art {
+  height: 74px;
+  margin: -10px -12px 9px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.trap-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.15), var(--bg-raised));
+}
+
+.trap-art.art-backfire {
+  background-image: url(../art/trap-backfire.webp);
+}
+
+.trap-art.art-cascade {
+  background-image: url(../art/trap-cascade.webp);
+}
+
+.track-art {
+  height: 62px;
+  border-radius: var(--radius);
+  background-image: url(../art/trap-influence.webp);
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.track-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.1), rgba(17, 22, 31, 0.92));
+}
+
+/* Infected regions glow, so pressure reads at a glance. */
+.infection {
+  filter: drop-shadow(0 0 5px rgba(216, 53, 43, 0.55));
+}
+
+/* Vignette over the map, matching the concept art's lit-globe feel. */
+.map-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(4, 7, 11, 0.55) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .infection {
+    filter: none;
+  }
+}

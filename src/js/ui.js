@@ -291,6 +291,12 @@ export function renderSheet(state, view, handlers) {
 }
 
 function renderTrack(state, view, host, handlers) {
+  if (view.sheet === 'influence') {
+    const art = document.createElement('div');
+    art.className = 'track-art';
+    host.appendChild(art);
+  }
+
   for (const action of ACTIONS.filter((a) => a.track === view.sheet)) {
     const bought = state.purchases[action.id] || 0;
     const cost = actionCost(state, action.id);
@@ -351,6 +357,10 @@ function renderTraps(state, host, handlers) {
 
     const card = document.createElement('div');
     card.className = `card trap-card is-${runtime.status}`;
+
+    const art = document.createElement('div');
+    art.className = `trap-art art-${trap.id}`;
+    card.appendChild(art);
 
     const head = document.createElement('div');
     head.className = 'trap-head';

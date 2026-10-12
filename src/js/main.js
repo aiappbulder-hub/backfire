@@ -46,6 +46,7 @@ function restart() {
   view.sheet = null;
   view.selectedRegion = null;
   byId('end-screen').hidden = true;
+  byId('title-screen').hidden = false;
   draw();
 }
 
@@ -65,6 +66,10 @@ byId('sheet-close').addEventListener('click', () => {
 });
 
 byId('end-restart').addEventListener('click', restart);
+
+byId('title-begin').addEventListener('click', () => {
+  byId('title-screen').hidden = true;
+});
 
 const helpScreen = byId('help-screen');
 byId('help-button').addEventListener('click', () => {
