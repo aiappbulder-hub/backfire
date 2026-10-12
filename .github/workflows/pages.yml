@@ -1,0 +1,59 @@
+name: Deploy to GitHub Pages
+
+# Publishes the single-file build to https://aiappbulder-hub.github.io/backfire/
+# `configure-pages` with enablement turns Pages on itself, so the site needs no
+# manual setup in repository settings.
+
+on:
+  push:
+    branches: [ccr-bb02ce0a-6o3w6z]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The game has no dependencies, so there is nothing to install.
+      - name: Run the rule tests
+        run: npm test
+
+      - name: Build the single-file game
+        run: npm run build
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          cp dist/backfire.html _site/index.html
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
