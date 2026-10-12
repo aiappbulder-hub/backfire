@@ -40,6 +40,20 @@ jobs:
           mkdir -p _site
           cp dist/backfire.html _site/index.html
 
+      # Never publish a broken page: prove the built file carries the game and
+      # that the artwork really was inlined before it goes live.
+      - name: Verify the assembled page
+        run: |
+          page=_site/index.html
+          test -f "$page" || { echo "no index.html assembled"; exit 1; }
+          bytes=$(wc -c < "$page")
+          echo "index.html is ${bytes} bytes"
+          [ "$bytes" -gt 100000 ] || { echo "page is suspiciously small"; exit 1; }
+          grep -q 'BACKFIRE' "$page" || { echo "title missing"; exit 1; }
+          grep -q 'id="map"' "$page" || { echo "map missing"; exit 1; }
+          grep -q 'data:image/webp;base64' "$page" || { echo "artwork not inlined"; exit 1; }
+          echo "page looks publishable"
+
       - uses: actions/configure-pages@v5
         with:
           enablement: true
