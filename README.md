@@ -8,6 +8,15 @@ research, cooperation between two hostile blocs.
 A trap must be bought **before** its trigger exists. That is the whole game: you
 are predicting what humanity will do, not optimising a spread curve.
 
+## Play it
+
+**https://aiappbulder-hub.github.io/backfire/**
+
+Published by `.github/workflows/pages.yml` on every push to the default branch:
+it runs the tests, builds the single-file game, checks the assembled page
+really carries the title, the map and the inlined artwork, and only then
+deploys it as the site root.
+
 ## Run it
 
 No dependencies. Two ways:
