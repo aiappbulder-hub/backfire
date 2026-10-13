@@ -70,7 +70,8 @@ export function renderMap(state, view, handlers) {
     (state.phase === 'planning' && view.sheet === 'spread' && state.drift >= actionCost(state, 'seed'));
   const seedable = state.phase === 'setup' ? REGIONS.map((r) => r.id) : seedableRegions(state);
 
-  svg.appendChild(el('rect', { x: 0, y: 0, width: 1000, height: 500, fill: '#0b1119' }));
+  // Transparent ground: the atmosphere layer behind the SVG provides the ocean.
+  svg.appendChild(el('rect', { x: 0, y: 0, width: 1000, height: 500, fill: 'transparent' }));
 
   const grid = el('g', { class: 'graticule' });
   for (let lon = -150; lon <= 150; lon += 30) {
@@ -108,6 +109,7 @@ export function renderMap(state, view, handlers) {
     if (rs.cleared) classes.push('is-cleared');
     if (view.selectedRegion === region.id) classes.push('is-selected');
     if (canSeedNow && seedable.includes(region.id)) classes.push('is-seedable');
+    if (view.changedRegions && view.changedRegions.has(region.id)) classes.push('is-changed');
 
     const group = el('g', {
       class: classes.join(' '),
@@ -135,6 +137,9 @@ export function renderMap(state, view, handlers) {
     }
 
     const [lx, ly] = project(geo.label);
+    if (view.selectedRegion === region.id) {
+      group.appendChild(el('circle', { cx: lx, cy: ly - 4, r: 26, class: 'select-ring' }));
+    }
     group.appendChild(el('text', { x: lx, y: ly, class: 'region-label' }, region.short));
     if (seen.value > 0.001 || rs.cleared) {
       group.appendChild(

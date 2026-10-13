@@ -12,7 +12,7 @@ import { renderAll } from './ui.js';
 
 const byId = (id) => document.getElementById(id);
 
-const view = { sheet: null, selectedRegion: null };
+const view = { sheet: null, selectedRegion: null, changedRegions: null };
 let state = createGame(randomSeed());
 
 function randomSeed() {
@@ -60,10 +60,27 @@ function restart() {
   draw();
 }
 
+/** A compact signature of a region's visible state, to detect what changed. */
+function regionSignatures(s) {
+  const sig = {};
+  for (const id of Object.keys(s.regions)) {
+    const r = s.regions[id];
+    const band = r.inf < 0.001 ? 0 : r.inf < 0.1 ? 1 : r.inf < 0.4 ? 2 : 3;
+    sig[id] = `${r.contained ? 'c' : ''}${r.cleared ? 'x' : ''}${band}`;
+  }
+  return sig;
+}
+
 byId('end-turn').addEventListener('click', () => {
   if (state.phase !== 'planning') return;
+  const before = regionSignatures(state);
   endTurn(state);
+  const after = regionSignatures(state);
+  const changed = new Set(Object.keys(after).filter((id) => after[id] !== before[id]));
+  view.changedRegions = changed.size ? changed : null;
   draw();
+  // The flash plays once on the post-turn render; later renders should not re-fire it.
+  view.changedRegions = null;
 });
 
 for (const btn of document.querySelectorAll('.dock-btn')) {
