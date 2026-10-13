@@ -41,7 +41,13 @@ export function createGame(seed = Date.now()) {
     collapse: 0,
     cure: 0,
     cureRateLast: 0,
-    cureMods: [], // [{ turns, mult, label }]
+    cureMods: [], // [{ turns, mult }]
+    transMods: [], // temporary transmission multipliers from events
+    corridorTurns: 0, // refugee corridor: cross-bloc friction suspended
+    bubbles: [], // clickable outbreak markers worth Drift
+    bubbleSeq: 0,
+    headline: null, // latest news headline, for the ticker
+    sleeper: { regionId: null, turns: 0 }, // armed Sleeper Reservoir relapse
     cureMultiplier: 1, // permanent multiplier (attribution)
 
     cooperation: 28,
@@ -52,7 +58,15 @@ export function createGame(seed = Date.now()) {
     cooperationStreak: 0,
 
     blocs: {
-      red: { id: 'red', name: 'Red Bloc', treatment: 0, research: 0, detected: 0, concealing: true },
+      red: {
+        id: 'red',
+        name: 'Red Bloc',
+        treatment: 0,
+        research: 0,
+        detected: 0,
+        concealing: true,
+        forcedReveal: false,
+      },
       blue: { id: 'blue', name: 'Blue Bloc', treatment: 0, research: 0, detected: 0, concealing: false },
     },
 
@@ -94,7 +108,20 @@ export function transmission(state) {
   let t = CONFIG.transmissionStart + upgrades * CONFIG.transmissionPerUpgrade;
   // Holding a latent payload costs a little base reach.
   if (armedTrapCount(state) > 0) t *= 1 - CONFIG.armedTransmissionPenalty;
+  // The Decoy Coat is bulky: it costs more while held.
+  if (state.traps.decoy.status === 'armed') t *= 0.85;
+  for (const mod of state.transMods) t *= mod.mult;
   return t;
+}
+
+/** How much of the real case load the blocs can see. Asymptomatic carriage hides it. */
+export function detectionFactor(state) {
+  return Math.max(0.3, 1 - 0.15 * (state.purchases.asymptomatic || 0));
+}
+
+/** Treatment's real bite, after drug resistance blunts it. */
+function effectiveTreatment(state, treat) {
+  return treat * Math.max(0.3, 1 - 0.2 * (state.purchases.resistance || 0));
 }
 
 export function armedTrapCount(state) {
@@ -153,9 +180,10 @@ export function visibleInfection(state, regionId) {
   const region = REGION_BY_ID[regionId];
   const rs = state.regions[regionId];
   const concealed = region.bloc === 'red' && state.blocs.red.concealing && rs.inf > 0;
+  const seen = rs.inf * detectionFactor(state) * (concealed ? 0.55 : 1);
   return {
-    value: concealed ? rs.inf * 0.55 : rs.inf,
-    unverified: concealed,
+    value: seen,
+    unverified: concealed || detectionFactor(state) < 1,
   };
 }
 
@@ -248,6 +276,23 @@ export function purchase(state, actionId, regionId = null) {
     case 'resilience':
       pushLog(state, `Climate resilience improved (level ${state.purchases.resilience}).`, 'spread');
       break;
+    case 'asymptomatic':
+      pushLog(state, `Asymptomatic carriage improved — reported cases now run ${Math.round((1 - detectionFactor(state)) * 100)}% below the truth.`, 'spread');
+      break;
+    case 'resistance':
+      pushLog(state, 'Drug resistance acquired. Treatment programmes lose their bite.', 'spread');
+      break;
+    case 'protest':
+      for (const b of ['red', 'blue']) {
+        state.blocs[b].treatment = clamp(state.blocs[b].treatment - 12, 0, 100);
+      }
+      state.publicTrust = clamp(state.publicTrust - 5, 0, 100);
+      state.tension = clamp(state.tension + 4, 0, 100);
+      pushLog(state, 'Protest movement funded. Containment buckles under the crowds.', 'political');
+      break;
+    case 'bribe':
+      pushLog(state, 'Investigator bribed. The enquiry slows for good.', 'political');
+      break;
     case 'reach':
       state.investigation = clamp(state.investigation + 6, 0, 100);
       pushLog(state, 'Long-haul vectors acquired. Distant regions are now reachable.', 'spread');
@@ -290,6 +335,8 @@ export function purchase(state, actionId, regionId = null) {
 export function trapTriggered(state, trapId) {
   const m = metrics(state);
   if (trapId === 'backfire') return m.maxTreatment >= 40;
+  if (trapId === 'decoy') return state.cure >= 25;
+  if (trapId === 'sleeper') return REGIONS.some((r) => state.regions[r.id].cleared);
   if (trapId === 'cascade') return state.cure >= 50;
   return false;
 }
@@ -329,6 +376,7 @@ export function endTurn(state) {
   if (state.phase !== 'planning') return { ok: false, reason: 'Game is not in play.' };
 
   state.turnReport = [];
+  state.bubbles = []; // last turn's markers expire uncollected
   state.day += CONFIG.daysPerTurn;
 
   resolveSpread(state);
@@ -345,9 +393,70 @@ export function endTurn(state) {
   if (!ended) {
     state.turn += 1;
     state.drift = round1(state.drift + driftIncome(state));
+    spawnBubbles(state);
     state.briefing = buildBriefing(state);
   }
   return { ok: true, report: state.turnReport };
+}
+
+/**
+ * Outbreak markers: small Drift payouts that appear on infected regions and
+ * vanish at the end of the turn. They are the reason to keep watching the map
+ * rather than only the panels.
+ */
+function spawnBubbles(state) {
+  const live = REGIONS.filter((r) => state.regions[r.id].inf > 0.02);
+  if (!live.length || nextRandom(state) > CONFIG.bubbleChance) return;
+
+  const count = 1 + randomInt(state, CONFIG.bubbleMax);
+  const used = new Set();
+  for (let i = 0; i < count; i++) {
+    const region = live[randomInt(state, live.length)];
+    if (used.has(region.id)) continue;
+    used.add(region.id);
+    const span = CONFIG.bubbleDriftMax - CONFIG.bubbleDriftMin + 1;
+    state.bubbles.push({
+      id: (state.bubbleSeq += 1),
+      regionId: region.id,
+      amount: CONFIG.bubbleDriftMin + randomInt(state, span),
+    });
+  }
+}
+
+/** Collect one marker. Returns the Drift gained. */
+export function collectBubble(state, bubbleId) {
+  const index = state.bubbles.findIndex((b) => b.id === bubbleId);
+  if (index === -1) return { ok: false, reason: 'That marker is gone.' };
+  const [bubble] = state.bubbles.splice(index, 1);
+  state.drift = round1(state.drift + bubble.amount);
+  return { ok: true, amount: bubble.amount };
+}
+
+/**
+ * Final score. Rewards collapse, traps that actually fired and staying
+ * unattributed; punishes traps whose trigger passed while unarmed.
+ */
+export function computeScore(state) {
+  const traps = Object.values(state.traps);
+  const fired = traps.filter((t) => t.status === 'triggered').length;
+  const missed = traps.filter((t) => t.status === 'missed').length;
+
+  const parts = [
+    ['Collapse', Math.round(state.collapse * 50)],
+    ['Traps sprung', fired * 300],
+    ['Traps missed', missed * -150],
+    ['Never attributed', Math.round((100 - state.investigation) * 5)],
+    ['Speed', Math.max(0, 60 - state.turn) * 40],
+  ];
+
+  let score = parts.reduce((sum, [, value]) => sum + value, 0);
+  const won = state.outcome && state.outcome.result === 'win';
+  if (!won) score = Math.round(score * 0.4);
+  score = Math.max(0, score);
+
+  const grade =
+    score >= 7000 ? 'S' : score >= 5500 ? 'A' : score >= 4000 ? 'B' : score >= 2500 ? 'C' : 'D';
+  return { score, grade, parts, won: Boolean(won) };
 }
 
 function treatmentFor(state, region) {
@@ -375,7 +484,7 @@ function resolveSpread(state) {
   for (const r of REGIONS) {
     const rs = state.regions[r.id];
     if (rs.inf <= 0) continue;
-    const treat = treatmentFor(state, r);
+    const treat = effectiveTreatment(state, treatmentFor(state, r));
     // A competent response pushes infection down (negative term). Backfire
     // inverts the sign of that work, which is the whole point of the trap.
     const treatMod =
@@ -403,7 +512,8 @@ function resolveSpread(state) {
   for (const e of EDGES) {
     const closed = (state.closedEdges[edgeKey(e)] || 0) > 0;
     if (closed) continue;
-    const friction = e.cross ? Math.max(0.15, 1 - state.tension / 120) : 1;
+    const friction =
+      e.cross && state.corridorTurns <= 0 ? Math.max(0.15, 1 - state.tension / 120) : 1;
     for (const [from, to] of [
       [e.a, e.b],
       [e.b, e.a],
@@ -459,12 +569,13 @@ function resolveBlocs(state) {
     const bloc = state.blocs[blocId];
     const regions = REGIONS.filter((r) => r.bloc === blocId);
     const pop = regions.reduce((s, r) => s + r.pop, 0);
-    const detected = regions.reduce((s, r) => s + r.pop * state.regions[r.id].inf, 0) / pop;
+    const detected =
+      (regions.reduce((s, r) => s + r.pop * state.regions[r.id].inf, 0) / pop) * detectionFactor(state);
     bloc.detected = detected;
 
     if (blocId === 'red') {
       const wasConcealing = bloc.concealing;
-      bloc.concealing = detected < 0.25;
+      bloc.concealing = bloc.forcedReveal ? false : detected < 0.25;
       if (wasConcealing && !bloc.concealing) {
         pushLog(
           state,
@@ -488,7 +599,7 @@ function resolveBlocs(state) {
 
     if (detected > 0.02) {
       const before2 = bloc.research;
-      bloc.research = Math.min(10, bloc.research + 0.6 + state.cooperation / 150);
+      bloc.research = Math.min(10, bloc.research + 0.55 + state.cooperation / 180);
       if (before2 < 0.01) pushLog(state, `${bloc.name} opens a research programme.`, 'bloc', true);
     }
 
@@ -526,9 +637,12 @@ function resolveBlocs(state) {
 }
 
 function eventContext(state) {
-  return metrics(state);
+  return {
+    ...metrics(state),
+    investigation: state.investigation,
+    concealing: state.blocs.red.concealing,
+  };
 }
-
 function resolveEvent(state) {
   const ctx = eventContext(state);
   const event = weightedPick(state, EVENTS, (e) => e.weight(ctx));
@@ -537,80 +651,98 @@ function resolveEvent(state) {
   applyEvent(state, event);
 }
 
-function applyEvent(state, event) {
-  const infected = REGIONS.filter((r) => state.regions[r.id].inf > 0.01);
-  switch (event.id) {
-    case 'festival': {
-      const target = infected.length ? infected[randomInt(state, infected.length)] : null;
-      if (target) {
-        state.regions[target.id].inf = clamp(state.regions[target.id].inf + 0.08, 0, 1);
-        pushLog(state, `${event.name}: ${event.text} Cases jump in ${target.name}.`, 'event');
-      } else {
-        pushLog(state, `${event.name}: crowds gather, but there is nothing to spread yet.`, 'event');
+const METERS = new Set(['cooperation', 'tension', 'publicTrust', 'investigation']);
+
+/** Interpret one declarative effect from the event deck. */
+function applyEffect(state, effect) {
+  if (effect.meter) {
+    if (!METERS.has(effect.meter)) throw new Error(`unknown meter ${effect.meter}`);
+    state[effect.meter] = clamp(state[effect.meter] + effect.delta, 0, 100);
+    return;
+  }
+  if (effect.treatment !== undefined) {
+    for (const b of ['red', 'blue']) {
+      state.blocs[b].treatment = clamp(state.blocs[b].treatment + effect.treatment, 0, 100);
+    }
+    return;
+  }
+  if (effect.research !== undefined) {
+    for (const b of ['red', 'blue']) {
+      state.blocs[b].research = clamp(state.blocs[b].research + effect.research, 0, 10);
+    }
+    return;
+  }
+  if (effect.infectRandom !== undefined) {
+    const live = REGIONS.filter((r) => state.regions[r.id].inf > 0.01);
+    if (!live.length) return;
+    const target = live[randomInt(state, live.length)];
+    state.regions[target.id].inf = clamp(state.regions[target.id].inf + effect.infectRandom, 0, 1);
+    state.lastEventRegion = target.name;
+    return;
+  }
+  if (effect.seedClean) {
+    const clean = REGIONS.filter((r) => state.regions[r.id].inf <= 0.001);
+    if (!clean.length) return;
+    const target = clean[randomInt(state, clean.length)];
+    state.regions[target.id].inf = 0.02;
+    state.regions[target.id].cleared = false;
+    state.lastEventRegion = target.name;
+    return;
+  }
+  if (effect.closeEdge !== undefined) {
+    const open = EDGES.filter((e) => !(state.closedEdges[edgeKey(e)] > 0));
+    if (!open.length) return;
+    const e = open[randomInt(state, open.length)];
+    state.closedEdges[edgeKey(e)] = effect.closeEdge;
+    state.lastEventRegion = `${REGION_BY_ID[e.a].name} ↔ ${REGION_BY_ID[e.b].name}`;
+    return;
+  }
+  if (effect.openCorridor !== undefined) {
+    state.corridorTurns = Math.max(state.corridorTurns, effect.openCorridor);
+    return;
+  }
+  if (effect.cureMod) {
+    state.cureMods.push({ ...effect.cureMod });
+    return;
+  }
+  if (effect.transMod) {
+    state.transMods.push({ ...effect.transMod });
+    return;
+  }
+  if (effect.drift !== undefined) {
+    state.drift = Math.max(0, round1(state.drift + effect.drift));
+    return;
+  }
+  if (effect.reveal) {
+    // A leak cannot be un-leaked: concealment is over for good.
+    state.blocs.red.concealing = false;
+    state.blocs.red.forcedReveal = true;
+    return;
+  }
+  if (effect.breakContainment !== undefined) {
+    let left = effect.breakContainment;
+    for (const r of REGIONS) {
+      if (left <= 0) break;
+      const rs = state.regions[r.id];
+      if (rs.contained) {
+        rs.contained = false;
+        left -= 1;
+        state.lastEventRegion = r.name;
       }
-      break;
     }
-    case 'election': {
-      for (const b of ['red', 'blue']) {
-        state.blocs[b].treatment = clamp(state.blocs[b].treatment - 8, 0, 100);
-      }
-      state.cooperation = clamp(state.cooperation - 5, 0, 100);
-      state.publicTrust = clamp(state.publicTrust - 4, 0, 100);
-      pushLog(state, `${event.name}: ${event.text} Treatment programmes stall.`, 'event');
-      break;
-    }
-    case 'strike': {
-      const candidates = EDGES.filter((e) => !(state.closedEdges[edgeKey(e)] > 0));
-      if (candidates.length) {
-        const e = candidates[randomInt(state, candidates.length)];
-        state.closedEdges[edgeKey(e)] = 3;
-        pushLog(
-          state,
-          `${event.name}: ${event.text} ${REGION_BY_ID[e.a].name} ↔ ${REGION_BY_ID[e.b].name} is closed.`,
-          'event',
-        );
-      }
-      break;
-    }
-    case 'cable': {
-      state.cureMods.push({ turns: 2, mult: 0.4, label: 'cable cut' });
-      state.cooperation = clamp(state.cooperation - 3, 0, 100);
-      // Routine setback, not a turning point — kept out of the causal timeline.
-      pushLog(state, `${event.name}: ${event.text}`, 'event');
-      break;
-    }
-    case 'coldchain': {
-      for (const b of ['red', 'blue']) {
-        state.blocs[b].treatment = clamp(state.blocs[b].treatment - 10, 0, 100);
-      }
-      state.publicTrust = clamp(state.publicTrust - 6, 0, 100);
-      pushLog(state, `${event.name}: ${event.text}`, 'event');
-      break;
-    }
-    case 'containment': {
-      const clean = REGIONS.filter((r) => state.regions[r.id].inf <= 0.001);
-      if (clean.length) {
-        const target = clean[randomInt(state, clean.length)];
-        state.regions[target.id].inf = 0.02;
-        state.regions[target.id].cleared = false;
-        state.investigation = clamp(state.investigation + 6, 0, 100);
-        pushLog(
-          state,
-          `${event.name}: ${event.text} A second seed point appears in ${target.name}.`,
-          'event',
-          true,
-        );
-      } else {
-        state.investigation = clamp(state.investigation + 6, 0, 100);
-        pushLog(state, `${event.name}: ${event.text} Investigators take note.`, 'event');
-      }
-      break;
-    }
-    default:
-      break;
   }
 }
 
+function applyEvent(state, event) {
+  state.lastEventRegion = null;
+  for (const effect of event.effects) applyEffect(state, effect);
+
+  // A second seed point or a blown cover changes the shape of the run.
+  const pivotal = event.effects.some((e) => e.seedClean || e.reveal);
+  const where = state.lastEventRegion ? ` (${state.lastEventRegion})` : '';
+  pushLog(state, `${event.name}: ${event.headline}${where}`, 'event', pivotal);
+  state.headline = { turn: state.turn, name: event.name, text: event.headline };
+}
 function resolveSummit(state) {
   if (state.turn % CONFIG.summitEvery !== 0) return;
   if (state.sabotageArmed) {
@@ -649,8 +781,10 @@ function resolvePolitics(state) {
   );
 
   if (!state.investigationResolved) {
+    // Each bribe slows the enquiry's steady advance for the rest of the run.
+    const bribeSlowdown = Math.max(0.3, 1 - 0.3 * (state.purchases.bribe || 0));
     state.investigation = clamp(
-      state.investigation + CONFIG.investigationPerTurn + m.globalInfection * 2,
+      state.investigation + (CONFIG.investigationPerTurn + m.globalInfection * 2) * bribeSlowdown,
       0,
       100,
     );
@@ -672,8 +806,8 @@ function resolveCure(state) {
   const research = sharedResearch(state);
   const eventMult = state.cureMods.reduce((acc, mod) => acc * mod.mult, 1);
   const rate =
-    (0.5 + 0.3 * research) *
-    (0.5 + state.cooperation / 75) *
+    (0.45 + 0.26 * research) *
+    (0.55 + state.cooperation / 110) *
     eventMult *
     state.cureMultiplier *
     (state.cascadeActive ? 1.15 : 1);
@@ -704,6 +838,25 @@ function resolveTraps(state) {
         pushLog(
           state,
           'BACKFIRE RESPONSE FIRES: every treated case now accelerates the outbreak for 3 turns. Autopsy data will expose the mechanism.',
+          'trap',
+          true,
+        );
+      } else if (trapId === 'decoy') {
+        state.cure = clamp(state.cure - 10, 0, 100);
+        state.cureMods.push({ turns: 3, mult: 0.55 });
+        state.publicTrust = clamp(state.publicTrust - 20, 0, 100);
+        pushLog(
+          state,
+          'DECOY COAT FIRES: the candidate vaccine protects against the wrong coat. Cure progress collapses and public trust goes with it.',
+          'trap',
+          true,
+        );
+      } else if (trapId === 'sleeper') {
+        const cleared = REGIONS.find((r) => state.regions[r.id].cleared);
+        state.sleeper = { regionId: cleared.id, turns: 3 };
+        pushLog(
+          state,
+          `SLEEPER RESERVOIR ARMS: ${cleared.name} was declared cleared. Something is still there.`,
           'trap',
           true,
         );
@@ -744,7 +897,7 @@ function resolveCollapse(state) {
   const over = m.globalInfection - CONFIG.collapseFloor;
   let gain;
   if (over > 0) {
-    gain = over * 9 * (1 + state.lethality * 0.02) * (1 - 0.4 * m.containmentShare);
+    gain = over * 6.5 * (1 + state.lethality * 0.02) * (1 - 0.4 * m.containmentShare);
     if (state.backfireTurns > 0) gain *= 1.45;
     if (state.cascadeActive) gain += 3 * state.cascadeTier;
   } else {
@@ -766,6 +919,31 @@ function resolveCollapse(state) {
 }
 
 function tickTimers(state) {
+  if (state.sleeper.turns > 0) {
+    state.sleeper.turns -= 1;
+    if (state.sleeper.turns === 0) {
+      const rs = state.regions[state.sleeper.regionId];
+      const region = REGION_BY_ID[state.sleeper.regionId];
+      rs.inf = Math.max(rs.inf, 0.3);
+      rs.cleared = false;
+      rs.contained = false;
+      state.publicTrust = clamp(state.publicTrust - 10, 0, 100);
+      pushLog(
+        state,
+        `RESERVOIR WAKES: ${region.name} was clear. It is now 30% infected again, and nobody can explain it.`,
+        'trap',
+        true,
+      );
+      state.sleeper = { regionId: null, turns: 0 };
+    }
+  }
+
+  if (state.corridorTurns > 0) state.corridorTurns -= 1;
+
+  state.transMods = state.transMods
+    .map((mod) => ({ ...mod, turns: mod.turns - 1 }))
+    .filter((mod) => mod.turns > 0);
+
   if (state.backfireTurns > 0) {
     state.backfireTurns -= 1;
     if (state.backfireTurns === 0) {
@@ -890,4 +1068,4 @@ export function causalTimeline(state) {
   return state.log.filter((entry) => entry.pivotal);
 }
 
-export { REGION_BY_ID, NEIGHBOURS, CONFIG, REGIONS, EDGES, ACTIONS, TRAPS, TOTAL_POP };
+export { REGION_BY_ID, NEIGHBOURS, CONFIG, REGIONS, EDGES, ACTIONS, TRAPS, EVENTS, TOTAL_POP };

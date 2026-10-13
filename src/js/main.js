@@ -1,6 +1,13 @@
 // Wiring: owns the game state and the view state, routes input to the engine.
 
-import { createGame, endTurn, purchase, armTrap, seedPatientZero } from './engine.js';
+import {
+  armTrap,
+  collectBubble,
+  createGame,
+  endTurn,
+  purchase,
+  seedPatientZero,
+} from './engine.js';
 import { renderAll } from './ui.js';
 
 const byId = (id) => document.getElementById(id);
@@ -29,6 +36,9 @@ const handlers = {
   },
   onArmTrap(trapId) {
     if (armTrap(state, trapId).ok) draw();
+  },
+  onCollectBubble(bubbleId) {
+    if (collectBubble(state, bubbleId).ok) draw();
   },
 };
 

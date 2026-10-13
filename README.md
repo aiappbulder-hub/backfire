@@ -65,14 +65,15 @@ Plays four scripted strategies headlessly and reports win rates. Current results
 (60 runs each) show the designed regret — pure Spread loses, pure Influence
 loses, and prediction plus timing wins:
 
-| strategy       | win% | avg turns | typical loss      |
-| -------------- | ---- | --------- | ----------------- |
-| spread-heavy   | 0%   | 21.0      | cure completed    |
-| trap-heavy     | 33%  | 21.2      | cure completed    |
-| balanced       | 73%  | 25.7      | cure completed    |
-| influence-only | 3%   | 29.9      | cure completed    |
+| strategy       | win% | avg turns | typical loss   |
+| -------------- | ---- | --------- | -------------- |
+| spread-heavy   | 0%   | 23.1      | cure completed |
+| influence-only | 0%   | 32.7      | cure completed |
+| trap-heavy     | 54%  | 23.7      | cure completed |
+| balanced       | 64%  | 26.9      | cure completed |
 
-A game runs ~20–27 turns, which is the 10–15 minute target.
+Prediction and timing win; either single track alone loses. A game runs ~23–33
+turns.
 
 ## Artwork
 
@@ -124,9 +125,15 @@ treatment reaches 40.
   clearance. The Red Bloc conceals case counts until its own outbreak passes 25%
   — that slows the joint cure, but your map data for its regions is unverified.
 - Shared Drift economy across Spread / Traps / Influence, with escalating costs.
-- Two traps (Backfire Response, Cure Cascade) with four states — available,
-  armed, triggered, missed — and no retroactive arming.
-- Six events with state-aware weighting, each showing why its odds moved.
+- Four traps (Backfire Response, Decoy Coat, Sleeper Reservoir, Cure Cascade)
+  with four states — available, armed, triggered, missed — and no retroactive
+  arming. Only two slots, so two of the four must be given up every run.
+- A 20-card event deck with state-aware weighting, each card showing why its
+  odds moved, and a news ticker carrying the headline it generated.
+- Clickable Drift markers that appear on infected regions and expire at the end
+  of the turn — the reason to keep watching the map.
+- A final score and grade (S–D) with a breakdown, and a personal best kept in
+  the browser.
 - Cooperation, Tension, Public trust, Investigation (attribution), scheduled
   summits every 5 turns, and summit sabotage as counterplay.
 - Cure forecast derived from the live research rate and labelled an estimate.
@@ -154,8 +161,6 @@ with no browser, which is what makes the tests and the balance harness possible.
 
 ## Known gaps
 
-- Only two of the four designed traps are implemented (Decoy Coat and Sleeper
-  Reservoir are not). Prototype scope, per the brief.
 - The coastlines are simplified by hand. Europe is the roughest of them, and
   the Atlantic islands are approximations rather than real geography.
 - Tension is read by events and the cross-bloc border, but the player has no

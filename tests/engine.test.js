@@ -4,13 +4,17 @@ import assert from 'node:assert/strict';
 
 import {
   CONFIG,
+  EVENTS,
   REGIONS,
   actionCost,
   armTrap,
   armedTrapCount,
   canArmTrap,
   canPurchase,
+  collectBubble,
+  computeScore,
   createGame,
+  detectionFactor,
   cureForecast,
   endTurn,
   metrics,
@@ -27,6 +31,38 @@ function startedGame(seed = 'test-seed') {
   const state = createGame(seed);
   seedPatientZero(state, 'southAsia');
   return state;
+}
+
+/**
+ * Apply one specific event by forcing it to be the only one the deck can draw.
+ * The engine picks events by weight, so this isolates a single card.
+ */
+function applyEventForTest(state, event) {
+  const saved = EVENTS.map((e) => e.weight);
+  try {
+    for (const e of EVENTS) e.weight = () => (e.id === event.id ? 1 : 0);
+    endTurn(state);
+  } finally {
+    EVENTS.forEach((e, i) => {
+      e.weight = saved[i];
+    });
+  }
+}
+
+/**
+ * Run `fn` with the event deck silenced, so a comparison measures the mechanic
+ * under test rather than two runs drawing different cards.
+ */
+function withoutEvents(fn) {
+  const saved = EVENTS.map((e) => e.weight);
+  try {
+    for (const e of EVENTS) e.weight = () => 0;
+    return fn();
+  } finally {
+    EVENTS.forEach((e, i) => {
+      e.weight = saved[i];
+    });
+  }
 }
 
 /** Play `turns` turns, optionally running a planning hook each turn. */
@@ -155,14 +191,191 @@ test('an armed trap fires exactly once and leaves an explanation in the log', ()
   assert.equal(firesAgain.length, 1, 'a trap never fires twice');
 });
 
-test('only two traps can be held at once', () => {
+test('trap slots are limited, so some traps must be left unarmed', () => {
   const state = startedGame();
   state.drift = 10000;
-  armTrap(state, 'backfire');
-  armTrap(state, 'cascade');
+  const ids = Object.keys(state.traps);
+  assert.ok(ids.length > CONFIG.maxArmedTraps, 'there are more traps than slots');
+
+  let armedCount = 0;
+  for (const id of ids) {
+    if (canArmTrap(state, id).ok) {
+      armTrap(state, id);
+      armedCount += 1;
+    }
+  }
+  assert.equal(armedCount, CONFIG.maxArmedTraps);
   assert.equal(armedTrapCount(state), CONFIG.maxArmedTraps);
-  // With both slots used, nothing else can be armed.
-  assert.equal(canArmTrap(state, 'backfire').ok, false);
+
+  const spare = ids.find((id) => state.traps[id].status === 'available');
+  const check = canArmTrap(state, spare);
+  assert.equal(check.ok, false);
+  assert.match(check.reason, /at once/i);
+});
+
+test('Decoy Coat knocks the cure back and is unarmable once research passes 25%', () => {
+  const state = startedGame('decoy');
+  state.drift = 10000;
+  assert.equal(canArmTrap(state, 'decoy').ok, true);
+  armTrap(state, 'decoy');
+
+  state.cure = 40;
+  endTurn(state);
+  assert.equal(state.traps.decoy.status, 'triggered');
+  assert.ok(state.cure < 40, 'cure progress is knocked back');
+
+  // Too late for a second game that never armed it.
+  const late = startedGame('decoy-late');
+  late.drift = 10000;
+  late.cure = 30;
+  assert.equal(canArmTrap(late, 'decoy').ok, false);
+});
+
+test('Sleeper Reservoir re-infects a region that was declared cleared', () => {
+  const state = startedGame('sleeper');
+  state.drift = 10000;
+  armTrap(state, 'sleeper');
+  assert.equal(trapTriggered(state, 'sleeper'), false, 'nothing is cleared yet');
+
+  state.regions.northAmerica.cleared = true;
+  state.regions.northAmerica.inf = 0;
+  endTurn(state);
+  assert.equal(state.traps.sleeper.status, 'triggered');
+  assert.equal(state.sleeper.regionId, 'northAmerica');
+
+  for (let i = 0; i < 3 && state.phase === 'planning'; i++) endTurn(state);
+  assert.ok(state.regions.northAmerica.inf >= 0.25, 'the reservoir wakes');
+  assert.equal(state.regions.northAmerica.cleared, false);
+  assert.ok(state.log.some((e) => /RESERVOIR WAKES/.test(e.text) && e.pivotal));
+});
+
+test('outbreak markers pay Drift once and then are gone', () => {
+  const state = startedGame('bubbles');
+  // Play until some markers appear.
+  for (let i = 0; i < 12 && !state.bubbles.length && state.phase === 'planning'; i++) endTurn(state);
+  assert.ok(state.bubbles.length > 0, 'markers appear on infected regions');
+
+  const bubble = state.bubbles[0];
+  const before = state.drift;
+  const result = collectBubble(state, bubble.id);
+  assert.equal(result.ok, true);
+  assert.equal(state.drift, before + bubble.amount);
+  assert.equal(
+    state.bubbles.some((b) => b.id === bubble.id),
+    false,
+  );
+  assert.equal(collectBubble(state, bubble.id).ok, false, 'cannot be collected twice');
+});
+
+test('uncollected markers expire at the end of the turn', () => {
+  const state = startedGame('expire');
+  for (let i = 0; i < 12 && !state.bubbles.length && state.phase === 'planning'; i++) endTurn(state);
+  assert.ok(state.bubbles.length > 0);
+  const stale = state.bubbles[0].id;
+  endTurn(state);
+  assert.equal(
+    state.bubbles.some((b) => b.id === stale),
+    false,
+    'last turn markers do not carry over',
+  );
+});
+
+test('asymptomatic carriage makes the blocs under-count and react later', () => {
+  const plain = startedGame('seen');
+  const hidden = startedGame('unseen');
+  hidden.drift = 10000;
+  for (let i = 0; i < 3; i++) purchase(hidden, 'asymptomatic');
+  assert.ok(detectionFactor(hidden) < detectionFactor(plain));
+
+  // Pin the true case load each turn so only what the blocs can SEE differs.
+  // (Left to run free, hiding causes more spread, which pushes detection back
+  // up and the two converge — real behaviour, but it hides the mechanic.)
+  withoutEvents(() => {
+    for (let turn = 0; turn < 6; turn++) {
+      for (const s of [plain, hidden]) {
+        if (s.phase !== 'planning') continue;
+        for (const r of ['northAmerica', 'westEurope', 'oceania']) s.regions[r].inf = 0.25;
+        endTurn(s);
+      }
+    }
+  });
+
+  assert.ok(
+    hidden.blocs.blue.detected < plain.blocs.blue.detected,
+    'the bloc sees a smaller outbreak than it has',
+  );
+  assert.ok(
+    hidden.blocs.blue.treatment < plain.blocs.blue.treatment,
+    `hidden treatment ${hidden.blocs.blue.treatment} should trail plain ${plain.blocs.blue.treatment}`,
+  );
+});
+
+test('every event in the deck applies without breaking any bound', () => {
+  for (const event of EVENTS) {
+    const state = startedGame(`event-${event.id}`);
+    // A world with something to act on: infection, containment, research.
+    for (const r of ['southAsia', 'eastAsia', 'northAmerica']) state.regions[r].inf = 0.4;
+    state.regions.westEurope.contained = true;
+    state.regions.westEurope.inf = 0.3;
+    state.blocs.blue.research = 4;
+    state.blocs.red.research = 4;
+
+    applyEventForTest(state, event);
+
+    for (const key of ['cooperation', 'tension', 'publicTrust', 'investigation', 'cure', 'collapse']) {
+      assert.ok(state[key] >= 0 && state[key] <= 100, `${event.id} put ${key} out of range`);
+    }
+    for (const b of ['red', 'blue']) {
+      assert.ok(state.blocs[b].treatment >= 0 && state.blocs[b].treatment <= 100, `${event.id} treatment`);
+      assert.ok(state.blocs[b].research >= 0 && state.blocs[b].research <= 10, `${event.id} research`);
+    }
+    for (const r of REGIONS) {
+      const inf = state.regions[r.id].inf;
+      assert.ok(inf >= 0 && inf <= 1, `${event.id} infection in ${r.id}`);
+    }
+    assert.ok(state.drift >= 0, `${event.id} drift`);
+  }
+});
+
+test('every event weight is finite and non-negative across extreme worlds', () => {
+  const worlds = [
+    { globalInfection: 0, containmentShare: 0, publicTrust: 100, tension: 0, cooperation: 0, cure: 0, maxTreatment: 0, researchTotal: 0, investigation: 0, concealing: true },
+    { globalInfection: 1, containmentShare: 1, publicTrust: 0, tension: 100, cooperation: 100, cure: 100, maxTreatment: 100, researchTotal: 20, investigation: 100, concealing: false },
+  ];
+  for (const world of worlds) {
+    for (const event of EVENTS) {
+      const w = event.weight(world);
+      assert.ok(Number.isFinite(w), `${event.id} weight is not finite`);
+      assert.ok(w >= 0, `${event.id} weight is negative: ${w}`);
+    }
+  }
+});
+
+test('score rewards sprung traps and punishes missed ones', () => {
+  const win = startedGame('score-win');
+  win.collapse = 100;
+  win.investigation = 10;
+  win.outcome = { result: 'win' };
+  win.traps.backfire.status = 'triggered';
+  const strong = computeScore(win);
+
+  const weak = startedGame('score-weak');
+  weak.collapse = 100;
+  weak.investigation = 10;
+  weak.outcome = { result: 'win' };
+  weak.traps.backfire.status = 'missed';
+  const poor = computeScore(weak);
+
+  assert.ok(strong.score > poor.score, 'firing a trap beats missing one');
+  assert.ok(['S', 'A', 'B', 'C', 'D'].includes(strong.grade));
+
+  const lost = startedGame('score-loss');
+  lost.collapse = 100;
+  lost.investigation = 10;
+  lost.outcome = { result: 'loss' };
+  lost.traps.backfire.status = 'triggered';
+  assert.ok(computeScore(lost).score < strong.score, 'losing scores less than winning');
+  assert.ok(computeScore(lost).score >= 0);
 });
 
 test('cure cascade fires on cure progress and feeds collapse', () => {

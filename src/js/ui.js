@@ -12,6 +12,7 @@ import {
   canArmTrap,
   canPurchase,
   causalTimeline,
+  computeScore,
   cureForecast,
   driftIncome,
   metrics,
@@ -174,6 +175,34 @@ export function renderMap(state, view, handlers) {
     svg.appendChild(group);
   }
 
+  // Drift markers sit above everything so they are always clickable.
+  for (const bubble of state.bubbles) {
+    const geo = LANDMASSES[bubble.regionId];
+    const [bx, by] = project(geo.label);
+    const group = el('g', {
+      class: 'bubble',
+      tabindex: '0',
+      role: 'button',
+      'aria-label': `Collect ${bubble.amount} Drift from ${REGION_BY_ID[bubble.regionId].name}`,
+    });
+    // The pulse is decorative; the hit area underneath stays still, so the
+    // target does not move away from a finger (or a pointer) mid-tap.
+    group.appendChild(el('circle', { cx: bx + 34, cy: by - 26, r: 17, class: 'bubble-ring' }));
+    group.appendChild(el('circle', { cx: bx + 34, cy: by - 26, r: 22, class: 'bubble-hit' }));
+    group.appendChild(
+      el('text', { x: bx + 34, y: by - 21, class: 'bubble-text' }, `+${bubble.amount}`),
+    );
+    const collect = (ev) => {
+      ev.stopPropagation();
+      handlers.onCollectBubble(bubble.id);
+    };
+    group.addEventListener('click', collect);
+    group.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') collect(ev);
+    });
+    svg.appendChild(group);
+  }
+
   const m = metrics(state);
   $('map-status').textContent =
     state.phase === 'setup'
@@ -256,10 +285,21 @@ export function renderStatus(state) {
 }
 
 export function renderTicker(state) {
-  const entries = state.turnReport.length ? state.turnReport : state.log;
-  const latest = [...entries].reverse().find((e) => e.pivotal) || entries[entries.length - 1];
   const host = $('ticker');
   host.innerHTML = '';
+
+  // A fresh headline is the most interesting thing that happened this turn.
+  if (state.headline && state.headline.turn === state.turn - 1) {
+    const tag = document.createElement('b');
+    tag.className = 'ticker-news';
+    tag.textContent = 'NEWS';
+    host.append(tag, document.createTextNode(state.headline.text));
+    host.title = `${state.headline.name} — ${state.headline.text}`;
+    return;
+  }
+
+  const entries = state.turnReport.length ? state.turnReport : state.log;
+  const latest = [...entries].reverse().find((e) => e.pivotal) || entries[entries.length - 1];
   if (!latest) return;
   const tag = document.createElement('b');
   tag.textContent = `T${latest.turn}`;
@@ -491,6 +531,68 @@ function renderLog(state, host) {
 // End screen
 // ---------------------------------------------------------------------------
 
+// Personal best, per browser. Storage can be unavailable or throw, and the
+// end screen must render correctly either way.
+const BEST_KEY = 'backfire.best';
+
+function readBest() {
+  try {
+    return Number(localStorage.getItem(BEST_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeBest(value) {
+  try {
+    localStorage.setItem(BEST_KEY, String(value));
+  } catch {
+    /* private window, blocked storage — the run still scores, it just is not kept */
+  }
+}
+
+function renderScore(state) {
+  const host = $('end-score');
+  host.innerHTML = '';
+  const { score, grade, parts } = computeScore(state);
+  const previousBest = readBest();
+  const isBest = score > previousBest;
+  if (isBest) writeBest(score);
+
+  const headline = document.createElement('div');
+  headline.className = 'score-head';
+  const gradeEl = document.createElement('span');
+  gradeEl.className = `score-grade grade-${grade}`;
+  gradeEl.textContent = grade;
+  const total = document.createElement('span');
+  total.className = 'score-total';
+  total.textContent = score.toLocaleString();
+  const best = document.createElement('span');
+  best.className = 'score-best';
+  best.textContent = isBest
+    ? previousBest > 0
+      ? `new best — beat ${previousBest.toLocaleString()}`
+      : 'new best'
+    : `best ${previousBest.toLocaleString()}`;
+  headline.append(gradeEl, total, best);
+  host.appendChild(headline);
+
+  const list = document.createElement('ul');
+  list.className = 'score-parts';
+  for (const [label, value] of parts) {
+    if (!value) continue;
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = label;
+    const amount = document.createElement('span');
+    amount.className = value < 0 ? 'is-penalty' : '';
+    amount.textContent = value > 0 ? `+${value.toLocaleString()}` : value.toLocaleString();
+    li.append(name, amount);
+    list.appendChild(li);
+  }
+  host.appendChild(list);
+}
+
 export function renderEndScreen(state) {
   const overlay = $('end-screen');
   if (state.phase !== 'over' || !state.outcome) {
@@ -503,6 +605,8 @@ export function renderEndScreen(state) {
   $('end-summary').textContent = `${summary} Collapse ${Math.round(state.collapse)}% · cure ${Math.round(
     state.cure,
   )}% · turn ${state.turn}.`;
+
+  renderScore(state);
 
   const list = $('end-timeline');
   list.innerHTML = '';

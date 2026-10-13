@@ -5,6 +5,7 @@
 
 import {
   armTrap,
+  collectBubble,
   canArmTrap,
   canPurchase,
   createGame,
@@ -17,6 +18,11 @@ import {
 
 const RUNS = Number(process.argv[2] || 40);
 const START = 'southAsia'; // the most populous region — a fair opening for every strategy
+
+// A human would hoover up the Drift markers every turn; the harness should too.
+const sweepBubbles = (state) => {
+  for (const bubble of [...state.bubbles]) collectBubble(state, bubble.id);
+};
 
 const buy = (state, id, region = null) => {
   if (canPurchase(state, id, region).ok) return purchase(state, id, region).ok;
@@ -39,8 +45,10 @@ const STRATEGIES = {
   },
 
   'trap-heavy'(state) {
-    if (canArmTrap(state, 'backfire').ok) armTrap(state, 'backfire');
-    if (canArmTrap(state, 'cascade').ok) armTrap(state, 'cascade');
+    // Arm whatever the slots allow, cheapest trigger first.
+    for (const id of Object.keys(state.traps)) {
+      if (canArmTrap(state, id).ok) armTrap(state, id);
+    }
     buy(state, 'transmission');
   },
 
@@ -52,7 +60,7 @@ const STRATEGIES = {
     if (canArmTrap(state, 'backfire').ok) armTrap(state, 'backfire');
     if (state.cure > 30 && canArmTrap(state, 'cascade').ok) armTrap(state, 'cascade');
 
-    const savingForTrap = ['backfire', 'cascade'].some((id) => {
+    const savingForTrap = Object.keys(state.traps).some((id) => {
       const check = canArmTrap(state, id);
       return !check.ok && /Drift/.test(check.reason || '');
     });
@@ -74,6 +82,7 @@ function playOne(name, seed) {
   seedPatientZero(state, START);
   let guard = 0;
   while (state.phase === 'planning' && guard++ < 200) {
+    sweepBubbles(state);
     STRATEGIES[name](state);
     endTurn(state);
   }

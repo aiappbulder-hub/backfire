@@ -4,11 +4,11 @@
 export const CONFIG = {
   daysPerTurn: 5,
   startingDrift: 40,
-  driftBase: 7,
-  driftPerInfectedRegion: 0.7,
-  driftPerGlobalInfection: 18, // × globalInfection (0..1)
+  driftBase: 5,
+  driftPerInfectedRegion: 0.5,
+  driftPerGlobalInfection: 14, // × globalInfection (0..1)
 
-  baseGrowth: 0.26,
+  baseGrowth: 0.23,
   growthShape: 4, // logistic shaping so a 2% seed still moves visibly
   transmissionStart: 10,
   transmissionPerUpgrade: 2,
@@ -25,15 +25,21 @@ export const CONFIG = {
   maxArmedTraps: 2,
   armedTransmissionPenalty: 0.1, // holding a latent payload costs reach
 
-  summitEvery: 5,
+  summitEvery: 6,
   summitCooperation: 12,
 
+  // Clickable outbreak markers — the moment-to-moment reason to watch the map.
+  bubbleChance: 0.75,
+  bubbleMax: 2,
+  bubbleDriftMin: 3,
+  bubbleDriftMax: 8,
+
   cooperationLossThreshold: 80,
-  cooperationLossTurns: 6, // ≈30 days at 5 days/turn
+  cooperationLossTurns: 8, // ≈40 days at 5 days/turn
   collapseWin: 100,
   cureLoss: 100,
 
-  investigationPerTurn: 1.8,
+  investigationPerTurn: 1.5,
   investigationResolved: 100,
 };
 
@@ -135,6 +141,28 @@ export const ACTIONS = [
     tip: 'Place an outbreak by hand in a clean region bordering an infected one.',
   },
   {
+    id: 'asymptomatic',
+    track: 'spread',
+    name: 'Asymptomatic Carriage',
+    icon: '◍',
+    base: 30,
+    step: 16,
+    max: 3,
+    preview: 'blocs under-count cases by 15% per level',
+    tip: 'They treat what they can see. Stay invisible and the response comes late.',
+  },
+  {
+    id: 'resistance',
+    track: 'spread',
+    name: 'Drug Resistance',
+    icon: '⊗',
+    base: 42,
+    step: 26,
+    max: 2,
+    preview: 'treatment is 20% less effective per level',
+    tip: 'Blunts the counterforce that pushes infection down.',
+  },
+  {
     id: 'disinfo',
     track: 'influence',
     name: 'Disinformation',
@@ -168,6 +196,28 @@ export const ACTIONS = [
     tip: 'Slow the enquiry. If it rules the outbreak natural, the blocs unite.',
   },
   {
+    id: 'protest',
+    track: 'influence',
+    name: 'Fund a Protest Movement',
+    icon: '✊',
+    base: 38,
+    step: 14,
+    max: 99,
+    preview: '−12 treatment both blocs · −5 trust · +4 tension',
+    tip: 'Streets full of people are streets not under containment.',
+  },
+  {
+    id: 'bribe',
+    track: 'influence',
+    name: 'Bribe an Investigator',
+    icon: '⛃',
+    base: 44,
+    step: 20,
+    max: 3,
+    preview: 'the enquiry advances 30% slower, permanently',
+    tip: 'Cheaper than burying evidence every turn, if bought early.',
+  },
+  {
     id: 'sabotage',
     track: 'influence',
     name: 'Sabotage Summit',
@@ -196,6 +246,26 @@ export const TRAPS = [
     tellText: 'Autopsies expose it: +12 investigation when it fires.',
   },
   {
+    id: 'decoy',
+    name: 'Decoy Coat',
+    icon: '⬡',
+    kind: 'Immunological',
+    cost: 85,
+    triggerText: 'Cure research passes 25%',
+    effectText: 'Cure progress falls 10 points and crawls for 3 turns. Trust collapses.',
+    tellText: 'Costs 15% transmission for as long as you hold it.',
+  },
+  {
+    id: 'sleeper',
+    name: 'Sleeper Reservoir',
+    icon: '◴',
+    kind: 'Latent',
+    cost: 75,
+    triggerText: 'Any region is declared cleared',
+    effectText: 'That region re-emerges at 30% infection three turns later.',
+    tellText: 'No early benefit whatsoever — a pure bet on containment working.',
+  },
+  {
     id: 'cascade',
     name: 'Cure Cascade',
     icon: '⚗',
@@ -208,51 +278,171 @@ export const TRAPS = [
 ];
 
 /**
- * Six events. `weight(state)` returns a relative draw weight so the world the
- * player has made determines which cards come up. `why` explains the weighting,
- * so the odds are legible rather than mysterious.
+ * The event deck. `weight(state)` returns a relative draw weight, so the world
+ * the player has made decides which cards come up, and `why` explains that to
+ * the player. `effects` is interpreted by the engine — data stays data.
+ *
+ * `headline` is what the news ticker shows: the modern world reacting.
  */
 export const EVENTS = [
   {
     id: 'festival',
     name: 'Festival Superspreader',
-    text: 'A stadium season goes ahead in a region already carrying cases.',
+    headline: 'Festival goes ahead: 90,000 attend as organisers refuse to cancel',
     why: 'Likelier while infection is established but containment is loose.',
-    weight: (s) => 6 + 26 * s.globalInfection * (1 - s.containmentShare),
+    weight: (s) => 6 + 24 * s.globalInfection * (1 - s.containmentShare),
+    effects: [{ infectRandom: 0.08 }],
   },
   {
     id: 'election',
     name: 'Election Cycle',
-    text: 'An incumbent downplays case numbers to survive the vote.',
+    headline: 'Incumbent calls case numbers "wildly overstated" days before the vote',
     why: 'Likelier when public trust is low and tension is high.',
-    weight: (s) => 4 + (100 - s.publicTrust) * 0.22 + s.tension * 0.16,
+    weight: (s) => 4 + (100 - s.publicTrust) * 0.2 + s.tension * 0.14,
+    effects: [{ treatment: -8 }, { meter: 'cooperation', delta: -5 }, { meter: 'publicTrust', delta: -4 }],
+  },
+  {
+    id: 'conspiracy',
+    name: 'Viral Conspiracy Post',
+    headline: '#NotTheVirus trends worldwide; clinics report uptake collapsing overnight',
+    why: 'Likelier the lower public trust falls.',
+    weight: (s) => 3 + (100 - s.publicTrust) * 0.3,
+    effects: [{ meter: 'publicTrust', delta: -14 }, { treatment: -6 }, { meter: 'cooperation', delta: -4 }],
+  },
+  {
+    id: 'influencer',
+    name: 'Miracle Cure Goes Viral',
+    headline: 'Influencer’s "protocol" hits 40M views; health agencies scramble to respond',
+    why: 'Likelier when trust is low and treatment is visible.',
+    weight: (s) => 2 + (100 - s.publicTrust) * 0.18 + s.maxTreatment * 0.1,
+    effects: [{ meter: 'publicTrust', delta: -10 }, { treatment: -7 }],
+  },
+  {
+    id: 'protests',
+    name: 'Mass Lockdown Protests',
+    headline: 'Capitals fill with crowds as containment enters its third month',
+    why: 'Likelier the more regions are under containment.',
+    weight: (s) => 2 + s.containmentShare * 26 + (100 - s.publicTrust) * 0.1,
+    effects: [{ treatment: -9 }, { meter: 'publicTrust', delta: -6 }, { meter: 'tension', delta: 4 }, { breakContainment: 1 }],
   },
   {
     id: 'strike',
     name: 'Port Strike',
-    text: 'Shipping strands; one route closes for three turns.',
+    headline: 'Dockworkers walk out; 200 vessels idle outside the world’s busiest port',
     why: 'Likelier as military tension rises.',
-    weight: (s) => 3 + s.tension * 0.3,
+    weight: (s) => 3 + s.tension * 0.26,
+    effects: [{ closeEdge: 3 }, { cureMod: { turns: 2, mult: 0.9 } }],
   },
   {
     id: 'cable',
     name: 'Undersea Cable Cut',
-    text: 'Genomic data sharing stalls; joint research crawls for two turns.',
+    headline: 'Two trunk cables severed; genomic data sharing stalls indefinitely',
     why: 'Likelier as military tension rises.',
-    weight: (s) => 2 + s.tension * 0.26 + s.cure * 0.08,
+    weight: (s) => 2 + s.tension * 0.24 + s.cure * 0.07,
+    effects: [{ cureMod: { turns: 2, mult: 0.4 } }, { meter: 'cooperation', delta: -3 }],
+  },
+  {
+    id: 'travelban',
+    name: 'Emergency Travel Ban',
+    headline: 'Borders slam shut overnight; stranded travellers fill terminal floors',
+    why: 'Likelier once the blocs are cooperating and treatment is scaling.',
+    weight: (s) => 1 + s.cooperation * 0.16 + s.maxTreatment * 0.1,
+    effects: [{ closeEdge: 4 }, { meter: 'cooperation', delta: 4 }, { meter: 'tension', delta: 6 }],
+  },
+  {
+    id: 'corridor',
+    name: 'Refugee Corridor Opens',
+    headline: 'Humanitarian corridor agreed; first convoys cross the line of control',
+    why: 'Likelier when tension is high but cooperation has not collapsed.',
+    weight: (s) => 1 + s.tension * 0.18 + s.cooperation * 0.08,
+    effects: [{ openCorridor: 3 }, { meter: 'tension', delta: -5 }],
+  },
+  {
+    id: 'cyclone',
+    name: 'Cyclone Evacuation',
+    headline: 'Category 4 landfall forces 1.2 million into shelters',
+    why: 'Always possible; worse once infection is widespread.',
+    weight: (s) => 3 + 10 * s.globalInfection,
+    effects: [{ infectRandom: 0.1 }, { treatment: -4 }],
+  },
+  {
+    id: 'heatwave',
+    name: 'Record Heatwave',
+    headline: 'Third straight record summer; cooling centres open across the north',
+    why: 'Background risk, slightly likelier as the world destabilises.',
+    weight: (s) => 3 + 6 * s.globalInfection,
+    effects: [{ transMod: { turns: 2, mult: 1.25 } }],
+  },
+  {
+    id: 'schools',
+    name: 'School Term Begins',
+    headline: 'Classrooms reopen; ministers insist attendance is "non-negotiable"',
+    why: 'Background risk once the outbreak is established.',
+    weight: (s) => 3 + 12 * s.globalInfection,
+    effects: [{ infectRandom: 0.07 }],
+  },
+  {
+    id: 'surge',
+    name: 'Hospital Surge',
+    headline: 'Wards at 140% capacity; untreated patients discharged to free beds',
+    why: 'Likelier the more infection outruns treatment.',
+    weight: (s) => 1 + 20 * s.globalInfection - s.maxTreatment * 0.06,
+    effects: [{ infectRandom: 0.06 }, { treatment: -5 }, { meter: 'publicTrust', delta: -5 }],
   },
   {
     id: 'coldchain',
     name: 'Cold-Chain Break',
-    text: 'A spoiled shipment forces a treatment suspension.',
+    headline: 'Freezer failure spoils 4 million doses in transit',
     why: 'Likelier the more treatment capacity the blocs have built.',
-    weight: (s) => 2 + s.maxTreatment * 0.26,
+    weight: (s) => 2 + s.maxTreatment * 0.22,
+    effects: [{ treatment: -10 }, { meter: 'publicTrust', delta: -6 }],
   },
   {
     id: 'containment',
     name: 'Lab Containment Failure',
-    text: 'A second seed point escapes a high-security facility.',
+    headline: 'Biosafety breach confirmed at a national reference laboratory',
     why: 'Likelier the harder the blocs work on treatment and research.',
-    weight: (s) => 2 + s.maxTreatment * 0.14 + s.researchTotal * 0.5,
+    weight: (s) => 2 + s.maxTreatment * 0.12 + s.researchTotal * 0.45,
+    effects: [{ seedClean: true }, { meter: 'investigation', delta: 6 }],
+  },
+  {
+    id: 'nationalism',
+    name: 'Vaccine Nationalism',
+    headline: 'Bloc blocks dose exports "until domestic need is met"',
+    why: 'Likelier once research is advanced and tension is high.',
+    weight: (s) => 1 + s.researchTotal * 0.4 + s.tension * 0.12,
+    effects: [{ meter: 'cooperation', delta: -8 }, { meter: 'tension', delta: 7 }, { meter: 'publicTrust', delta: -3 }],
+  },
+  {
+    id: 'crash',
+    name: 'Market Crash',
+    headline: 'Indices shed 11% in a session; emergency funding votes delayed',
+    why: 'Likelier as the world destabilises.',
+    weight: (s) => 1 + 16 * s.globalInfection + s.tension * 0.08,
+    effects: [{ research: -1 }, { meter: 'cooperation', delta: -4 }, { meter: 'publicTrust', delta: -5 }],
+  },
+  {
+    id: 'tracing',
+    name: 'AI Contact Tracing Rollout',
+    headline: 'Nationwide tracing system goes live; privacy challenge filed within hours',
+    why: 'Likelier once the blocs are cooperating.',
+    weight: (s) => 1 + s.cooperation * 0.2,
+    effects: [{ treatment: 8 }, { meter: 'investigation', delta: 5 }, { meter: 'publicTrust', delta: -3 }],
+  },
+  {
+    id: 'leakdata',
+    name: 'Genomic Data Leak',
+    headline: 'Leaked sequences show true case counts far above official figures',
+    why: 'Likelier while a bloc is still concealing its numbers.',
+    weight: (s) => (s.concealing ? 8 : 0.5) + s.investigation * 0.06,
+    effects: [{ reveal: true }, { meter: 'cooperation', delta: 6 }, { meter: 'investigation', delta: 4 }],
+  },
+  {
+    id: 'funding',
+    name: 'Emergency Funding Package',
+    headline: 'Record joint appropriation clears both legislatures in a single day',
+    why: 'Likelier when cooperation is high.',
+    weight: (s) => 0.5 + s.cooperation * 0.22,
+    effects: [{ research: 1.5 }, { meter: 'cooperation', delta: 5 }, { treatment: 5 }],
   },
 ];

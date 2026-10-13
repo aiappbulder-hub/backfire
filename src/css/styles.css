@@ -268,9 +268,22 @@ h3 {
 /* --- Stage (the map owns the screen) ------------------------------------ */
 
 .stage {
-  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   background: #0b1119;
+}
+
+/* With a panel open the map shrinks into the remaining column rather than
+   hiding behind it, so the whole world stays visible while you spend. */
+.stage.has-sheet {
+  grid-template-columns: minmax(0, 1fr) min(400px, 42%);
+}
+
+.map-wrap {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -572,12 +585,11 @@ h3 {
 /* --- Slide-over sheet --------------------------------------------------- */
 
 .sheet {
-  /* Confined to the map stage: the HUD and the dock stay visible and usable
-     while a panel is open, so you can always end the turn. */
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  pointer-events: none;
+  /* A column of the stage, not an overlay: the HUD and dock stay usable, and
+     the map keeps the space the panel does not take. */
+  min-width: 0;
+  min-height: 0;
+  display: flex;
 }
 
 .sheet[hidden] {
@@ -585,17 +597,12 @@ h3 {
 }
 
 .sheet-panel {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: min(420px, 100%);
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-panel);
   border-left: 1px solid var(--line);
-  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.45);
-  pointer-events: auto;
   animation: slide-in 0.18s ease;
 }
 
@@ -1175,13 +1182,14 @@ button.primary {
     padding: 9px;
   }
 
+  .stage.has-sheet {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(130px, 1fr) minmax(0, 56%);
+  }
+
   .sheet-panel {
-    width: 100%;
-    top: auto;
-    height: 62%;
     border-left: 0;
     border-top: 1px solid var(--line);
-    border-radius: 10px 10px 0 0;
     animation: slide-up 0.18s ease;
   }
 
@@ -1320,5 +1328,143 @@ button.primary {
 @media (prefers-reduced-motion: reduce) {
   .infection {
     filter: none;
+  }
+}
+
+/* --- Drift markers ------------------------------------------------------ */
+/* The reason to keep watching the map: collect them before the turn ends. */
+
+.bubble {
+  cursor: pointer;
+}
+
+.bubble-ring {
+  fill: rgba(240, 180, 41, 0.18);
+  stroke: var(--drift);
+  stroke-width: 1.6;
+  animation: bubble-pulse 1.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+/* Static, invisible, and larger than the ring: the actual click target. */
+.bubble-hit {
+  fill: #000;
+  fill-opacity: 0;
+  pointer-events: all;
+}
+
+.bubble:hover .bubble-ring,
+.bubble:focus .bubble-ring {
+  fill: rgba(240, 180, 41, 0.38);
+}
+
+.bubble-text {
+  font-size: 13px;
+  font-weight: 700;
+  text-anchor: middle;
+  fill: var(--drift);
+  font-family: var(--mono);
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(4, 8, 13, 0.9);
+  stroke-width: 3px;
+}
+
+@keyframes bubble-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+
+.ticker-news {
+  color: #0a0d12 !important;
+  background: var(--drift);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+/* --- Score -------------------------------------------------------------- */
+
+.score {
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.score-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.score-grade {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--mono);
+}
+
+.grade-S {
+  color: var(--drift);
+}
+.grade-A {
+  color: #6fd08c;
+}
+.grade-B {
+  color: var(--trust);
+}
+.grade-C {
+  color: var(--ink-dim);
+}
+.grade-D {
+  color: var(--ink-faint);
+}
+
+.score-total {
+  font-family: var(--mono);
+  font-size: 24px;
+}
+
+.score-best {
+  margin-left: auto;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.score-parts {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.score-parts li {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+}
+
+.score-parts .is-penalty {
+  color: var(--red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble-ring {
+    animation: none;
   }
 }
