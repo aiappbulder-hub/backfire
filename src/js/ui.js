@@ -87,7 +87,7 @@ export function renderMap(state, view, handlers) {
   for (const e of EDGES) {
     const [x1, y1] = project(LANDMASSES[e.a].label);
     const [x2, y2] = project(LANDMASSES[e.b].label);
-    const closed = (state.closedEdges[`${e.a}|${e.b}`] || 0) > 0;
+    const closed = Boolean(state.closedEdges[`${e.a}|${e.b}`]);
     const hot = state.regions[e.a].inf > 0.05 && state.regions[e.b].inf > 0.05;
     const classes = ['route'];
     if (e.cross) classes.push('is-cross');

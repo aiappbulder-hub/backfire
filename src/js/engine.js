@@ -18,6 +18,26 @@ const NEIGHBOURS = (() => {
 })();
 
 const edgeKey = (e) => `${e.a}|${e.b}`;
+
+/**
+ * Timed effects. The convention: an effect created during turn N lasts for the
+ * next N_turns full turns — the turn it was created in does not count, because
+ * most of that turn has already resolved by the time it starts.
+ *
+ * `born` records the creating turn so the end-of-turn tick skips it once.
+ */
+function startTimer(state, turns) {
+  return { turns, born: state.turn };
+}
+
+function timerActive(state, timer) {
+  return Boolean(timer) && timer.turns > 0 && timer.born !== state.turn;
+}
+
+function tickTimer(state, timer) {
+  if (timer && timer.born !== state.turn) timer.turns -= 1;
+  return timer;
+}
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const round1 = (v) => Math.round(v * 10) / 10;
 
@@ -47,7 +67,7 @@ export function createGame(seed = Date.now()) {
     bubbles: [], // clickable outbreak markers worth Drift
     bubbleSeq: 0,
     headline: null, // latest news headline, for the ticker
-    sleeper: { regionId: null, turns: 0 }, // armed Sleeper Reservoir relapse
+    sleeper: null, // armed Sleeper Reservoir relapse: { regionId, turns, born }
     cureMultiplier: 1, // permanent multiplier (attribution)
 
     cooperation: 28,
@@ -78,7 +98,7 @@ export function createGame(seed = Date.now()) {
     traps: Object.fromEntries(
       TRAPS.map((t) => [t.id, { id: t.id, status: 'available', firedTurn: null }]),
     ),
-    backfireTurns: 0,
+    backfire: null,
     cascadeActive: false,
     cascadeTier: 0,
     sabotageArmed: false,
@@ -110,7 +130,7 @@ export function transmission(state) {
   if (armedTrapCount(state) > 0) t *= 1 - CONFIG.armedTransmissionPenalty;
   // The Decoy Coat is bulky: it costs more while held.
   if (state.traps.decoy.status === 'armed') t *= 0.85;
-  for (const mod of state.transMods) t *= mod.mult;
+  for (const mod of state.transMods) if (timerActive(state, mod)) t *= mod.mult;
   return t;
 }
 
@@ -485,22 +505,35 @@ function resolveSpread(state) {
     const rs = state.regions[r.id];
     if (rs.inf <= 0) continue;
     const treat = effectiveTreatment(state, treatmentFor(state, r));
-    // A competent response pushes infection down (negative term). Backfire
-    // inverts the sign of that work, which is the whole point of the trap.
-    const treatMod =
-      state.backfireTurns > 0
-        ? 1 + treat / 125
-        : Math.max(-0.7, 1 - treat / CONFIG.treatmentPivot);
-    const growth =
+    const backfiring = timerActive(state, state.backfire);
+
+    // Growth and suppression are separate terms. Containment slows the spread
+    // AND helps the response clear cases; folding them into one multiplier
+    // made containment weaken the very suppression it should strengthen.
+    let growth =
       CONFIG.baseGrowth *
       scale *
       rs.inf *
       (1 - rs.inf) *
       CONFIG.growthShape *
       climateFactor(state, r) *
-      (rs.contained ? 0.35 : 1) *
-      treatMod;
-    next[r.id] += growth;
+      (rs.contained ? 0.35 : 1);
+
+    if (backfiring) {
+      // Backfire Response: every treated case feeds the outbreak instead.
+      growth *= 1 + treat / 110;
+      next[r.id] += growth;
+    } else {
+      let contain = rs.contained ? CONFIG.containedSuppressionBonus : 1;
+      if (rs.contained) {
+        const fed = NEIGHBOURS[r.id].some(
+          (n) => state.regions[n].inf > 0.05 && !state.regions[n].contained,
+        );
+        if (!fed) contain *= CONFIG.coordinatedClearanceBonus; // nothing re-seeding it
+      }
+      const suppression = rs.inf * (treat / 100) * CONFIG.suppressionRate * contain;
+      next[r.id] += growth - suppression;
+    }
 
     // Over-lethality burns through a population instead of sustaining it.
     if (state.lethality > 0 && rs.inf > 0.55) {
@@ -510,8 +543,7 @@ function resolveSpread(state) {
 
   // Cross-border transfer.
   for (const e of EDGES) {
-    const closed = (state.closedEdges[edgeKey(e)] || 0) > 0;
-    if (closed) continue;
+    if (timerActive(state, state.closedEdges[edgeKey(e)])) continue;
     const friction =
       e.cross && state.corridorTurns <= 0 ? Math.max(0.15, 1 - state.tension / 120) : 1;
     for (const [from, to] of [
@@ -529,7 +561,7 @@ function resolveSpread(state) {
         (1 - dst.inf) *
         friction *
         (src.contained ? 0.3 : 1) *
-        (dst.contained ? 0.4 : 1) *
+        (dst.contained ? 0.25 : 1) *
         (dst.cleared ? 0.3 : 1) *
         climateFactor(state, dstRegion);
       if (dst.inf <= 0 && flow < CONFIG.seedThreshold) continue; // too weak to take hold
@@ -610,7 +642,7 @@ function resolveBlocs(state) {
         rs.contained = true;
         pushLog(state, `${bloc.name} declares containment in ${r.name}.`, 'bloc');
       }
-      if (rs.contained && rs.inf < 0.005) {
+      if (rs.contained && rs.inf < CONFIG.clearanceThreshold) {
         rs.contained = false;
         rs.cleared = true;
         rs.inf = 0;
@@ -627,7 +659,7 @@ function resolveBlocs(state) {
       rs.contained = true;
       pushLog(state, `International mission imposes containment in ${r.name}.`, 'bloc');
     }
-    if (rs.contained && rs.inf < 0.005) {
+    if (rs.contained && rs.inf < CONFIG.clearanceThreshold) {
       rs.contained = false;
       rs.cleared = true;
       rs.inf = 0;
@@ -690,10 +722,10 @@ function applyEffect(state, effect) {
     return;
   }
   if (effect.closeEdge !== undefined) {
-    const open = EDGES.filter((e) => !(state.closedEdges[edgeKey(e)] > 0));
+    const open = EDGES.filter((e) => !state.closedEdges[edgeKey(e)]);
     if (!open.length) return;
     const e = open[randomInt(state, open.length)];
-    state.closedEdges[edgeKey(e)] = effect.closeEdge;
+    state.closedEdges[edgeKey(e)] = startTimer(state, effect.closeEdge);
     state.lastEventRegion = `${REGION_BY_ID[e.a].name} ↔ ${REGION_BY_ID[e.b].name}`;
     return;
   }
@@ -702,11 +734,11 @@ function applyEffect(state, effect) {
     return;
   }
   if (effect.cureMod) {
-    state.cureMods.push({ ...effect.cureMod });
+    state.cureMods.push({ ...effect.cureMod, ...startTimer(state, effect.cureMod.turns) });
     return;
   }
   if (effect.transMod) {
-    state.transMods.push({ ...effect.transMod });
+    state.transMods.push({ ...effect.transMod, ...startTimer(state, effect.transMod.turns) });
     return;
   }
   if (effect.drift !== undefined) {
@@ -804,9 +836,12 @@ function resolvePolitics(state) {
 
 function resolveCure(state) {
   const research = sharedResearch(state);
-  const eventMult = state.cureMods.reduce((acc, mod) => acc * mod.mult, 1);
+  const eventMult = state.cureMods.reduce(
+    (acc, mod) => (timerActive(state, mod) ? acc * mod.mult : acc),
+    1,
+  );
   const rate =
-    (0.45 + 0.26 * research) *
+    (0.4 + 0.22 * research) *
     (0.55 + state.cooperation / 110) *
     eventMult *
     state.cureMultiplier *
@@ -833,7 +868,7 @@ function resolveTraps(state) {
       trap.status = 'triggered';
       trap.firedTurn = state.turn;
       if (trapId === 'backfire') {
-        state.backfireTurns = 3;
+        state.backfire = startTimer(state, 3);
         state.investigation = clamp(state.investigation + 12, 0, 100);
         pushLog(
           state,
@@ -843,7 +878,7 @@ function resolveTraps(state) {
         );
       } else if (trapId === 'decoy') {
         state.cure = clamp(state.cure - 10, 0, 100);
-        state.cureMods.push({ turns: 3, mult: 0.55 });
+        state.cureMods.push({ ...startTimer(state, 3), mult: 0.55 });
         state.publicTrust = clamp(state.publicTrust - 20, 0, 100);
         pushLog(
           state,
@@ -853,7 +888,7 @@ function resolveTraps(state) {
         );
       } else if (trapId === 'sleeper') {
         const cleared = REGIONS.find((r) => state.regions[r.id].cleared);
-        state.sleeper = { regionId: cleared.id, turns: 3 };
+        state.sleeper = { regionId: cleared.id, ...startTimer(state, 3) };
         pushLog(
           state,
           `SLEEPER RESERVOIR ARMS: ${cleared.name} was declared cleared. Something is still there.`,
@@ -897,8 +932,8 @@ function resolveCollapse(state) {
   const over = m.globalInfection - CONFIG.collapseFloor;
   let gain;
   if (over > 0) {
-    gain = over * 6.5 * (1 + state.lethality * 0.02) * (1 - 0.4 * m.containmentShare);
-    if (state.backfireTurns > 0) gain *= 1.45;
+    gain = over * 7.8 * (1 + state.lethality * 0.02) * (1 - 0.4 * m.containmentShare);
+    if (timerActive(state, state.backfire)) gain *= 1.45;
     if (state.cascadeActive) gain += 3 * state.cascadeTier;
   } else {
     // Below the floor the world rebuilds faster than you break it.
@@ -919,9 +954,9 @@ function resolveCollapse(state) {
 }
 
 function tickTimers(state) {
-  if (state.sleeper.turns > 0) {
-    state.sleeper.turns -= 1;
-    if (state.sleeper.turns === 0) {
+  if (state.sleeper) {
+    tickTimer(state, state.sleeper);
+    if (state.sleeper.turns <= 0) {
       const rs = state.regions[state.sleeper.regionId];
       const region = REGION_BY_ID[state.sleeper.regionId];
       rs.inf = Math.max(rs.inf, 0.3);
@@ -934,29 +969,25 @@ function tickTimers(state) {
         'trap',
         true,
       );
-      state.sleeper = { regionId: null, turns: 0 };
+      state.sleeper = null;
     }
   }
 
   if (state.corridorTurns > 0) state.corridorTurns -= 1;
 
-  state.transMods = state.transMods
-    .map((mod) => ({ ...mod, turns: mod.turns - 1 }))
-    .filter((mod) => mod.turns > 0);
+  state.transMods = state.transMods.filter((mod) => tickTimer(state, mod).turns > 0);
 
-  if (state.backfireTurns > 0) {
-    state.backfireTurns -= 1;
-    if (state.backfireTurns === 0) {
+  if (state.backfire) {
+    tickTimer(state, state.backfire);
+    if (state.backfire.turns <= 0) {
+      state.backfire = null;
       pushLog(state, 'The backfire window closes; treatment starts working again.', 'trap');
     }
   }
   for (const key of Object.keys(state.closedEdges)) {
-    state.closedEdges[key] -= 1;
-    if (state.closedEdges[key] <= 0) delete state.closedEdges[key];
+    if (tickTimer(state, state.closedEdges[key]).turns <= 0) delete state.closedEdges[key];
   }
-  state.cureMods = state.cureMods
-    .map((mod) => ({ ...mod, turns: mod.turns - 1 }))
-    .filter((mod) => mod.turns > 0);
+  state.cureMods = state.cureMods.filter((mod) => tickTimer(state, mod).turns > 0);
 }
 
 function endGame(state, result, title, summary) {

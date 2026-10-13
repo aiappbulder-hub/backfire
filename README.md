@@ -47,10 +47,10 @@ name. It also writes `dist/embed.html`, the same page without the outer
 ## Tests
 
 ```bash
-npm test           # 22 rule tests, node:test, no dependencies
+npm test           # 32 rule tests, node:test, no dependencies
 ```
 
-These cover the rules that are easy to break: Drift never goes negative, traps
+These cover the rules that are easy to break, including that treatment genuinely suppresses infection and that every timed effect lasts exactly as many turns as its card states: Drift never goes negative, traps
 cannot be armed after their trigger exists, a trap never fires twice, meters stay
 in bounds across a 60-turn run, the game ends once, restart fully resets, and the
 same seed reproduces the same run.
@@ -67,10 +67,10 @@ loses, and prediction plus timing wins:
 
 | strategy       | win% | avg turns | typical loss   |
 | -------------- | ---- | --------- | -------------- |
-| spread-heavy   | 0%   | 23.1      | cure completed |
-| influence-only | 0%   | 32.7      | cure completed |
-| trap-heavy     | 54%  | 23.7      | cure completed |
-| balanced       | 64%  | 26.9      | cure completed |
+| spread-heavy   | 0%   | 29.6      | cure completed |
+| influence-only | 0%   | 47.0      | cure completed |
+| trap-heavy     | 49%  | 30.6      | cure completed |
+| balanced       | 78%  | 35.1      | cure completed |
 
 Prediction and timing win; either single track alone loses. A game runs ~23–33
 turns.
@@ -106,7 +106,7 @@ Spread, Traps, Influence, Brief and Report.
 ## Win and loss
 
 - **Win:** Collapse reaches 100.
-- **Lose:** cure research reaches 100; or Cooperation stays at 80+ for 6 turns;
+- **Lose:** cure research reaches 100; or Cooperation stays at 80+ for 8 turns;
   or the outbreak burns out entirely from over-lethality.
 
 Collapse only accrues while global infection is above 25% — below that the world

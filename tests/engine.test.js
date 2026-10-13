@@ -182,7 +182,7 @@ test('an armed trap fires exactly once and leaves an explanation in the log', ()
   state.blocs.blue.treatment = 60;
   endTurn(state);
   assert.equal(state.traps.backfire.status, 'triggered');
-  assert.ok(state.backfireTurns > 0);
+  assert.ok(state.backfire && state.backfire.turns > 0);
   const fires = state.log.filter((e) => /BACKFIRE RESPONSE FIRES/.test(e.text));
   assert.equal(fires.length, 1);
 
@@ -376,6 +376,36 @@ test('score rewards sprung traps and punishes missed ones', () => {
   lost.traps.backfire.status = 'triggered';
   assert.ok(computeScore(lost).score < strong.score, 'losing scores less than winning');
   assert.ok(computeScore(lost).score >= 0);
+});
+
+test('a temporary effect lasts exactly the number of turns its card promises', () => {
+  // Backfire Response: 3 turns of inverted treatment after it fires.
+  const bf = startedGame('dur-backfire');
+  bf.drift = 10000;
+  armTrap(bf, 'backfire');
+  bf.blocs.blue.treatment = 60;
+  endTurn(bf); // fires this turn; the 3-turn window starts next turn
+  let backfireTurns = 0;
+  for (let i = 0; i < 6 && bf.phase === 'planning'; i++) {
+    if (bf.backfire && bf.backfire.turns > 0 && bf.backfire.born !== bf.turn) backfireTurns += 1;
+    endTurn(bf);
+  }
+  assert.equal(backfireTurns, 3, 'Backfire inversion applies for 3 turns');
+
+  // Sleeper Reservoir: relapse exactly 3 turns after it fires.
+  const sl = startedGame('dur-sleeper');
+  sl.drift = 10000;
+  armTrap(sl, 'sleeper');
+  sl.regions.northAmerica.cleared = true;
+  sl.regions.northAmerica.inf = 0;
+  endTurn(sl);
+  const firedTurn = sl.turn;
+  let relapseTurn = null;
+  for (let i = 0; i < 8 && sl.phase === 'planning'; i++) {
+    endTurn(sl);
+    if (relapseTurn === null && sl.regions.northAmerica.inf >= 0.25) relapseTurn = sl.turn;
+  }
+  assert.equal(relapseTurn - firedTurn, 3, 'the reservoir wakes 3 turns after arming');
 });
 
 test('cure cascade fires on cure progress and feeds collapse', () => {

@@ -15,12 +15,21 @@ export const CONFIG = {
   edgeFlow: 0.14,
   seedThreshold: 0.004,
 
-  // Treatment is a real counterforce: above this much treatment, infection
-  // actively declines. The Backfire trap inverts exactly this term.
-  treatmentPivot: 115,
+  // Treatment removes cases outright rather than only slowing growth, so a
+  // well-resourced response really can push infection down and clear a region.
+  // The Backfire trap inverts exactly this term. Tuned so that full treatment
+  // alone roughly holds a large outbreak, and treatment plus containment
+  // reverses it.
+  suppressionRate: 0.4,
+  containedSuppressionBonus: 1.5,
+  // "Cleared" is a political declaration, not elimination: a region is declared
+  // clear once reported cases fall below this. Which is exactly the gap the
+  // Sleeper Reservoir lives in.
+  clearanceThreshold: 0.02,
+  coordinatedClearanceBonus: 2, // a quarantined region with no live feed can be eliminated
   // Collapse only accrues while infection is above this share of the world,
   // and recedes below it — the world repairs itself if you let it.
-  collapseFloor: 0.25,
+  collapseFloor: 0.24,
 
   maxArmedTraps: 2,
   armedTransmissionPenalty: 0.1, // holding a latent payload costs reach
